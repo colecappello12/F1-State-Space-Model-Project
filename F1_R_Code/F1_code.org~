@@ -1,0 +1,352 @@
+Make sure to start up the python process by running code block in here first.  Not M-x run-python.
+
+* Import Packages
+- Need pandas to manage data as DataFrames
+- Need numpy to perform acceleration calculations
+- fastf1 allows us to get telemetry and lap data
+#+begin_src python :session *Python* :results output
+
+import pandas as pd
+import fastf1 as f1 
+import numpy as np
+
+#+end_src
+
+#+RESULTS:
+
+* Get Data
+Get Data for a particular session using fastf1 API.  In this case, the Singapore Grand Prix. We also load telemtry data for Charles Leclerc.
+#+begin_src python :session *Python* :results output
+
+  session = f1.get_session(2024, 18, "R")
+  session.load()
+  print(session.event)
+
+  df = pd.DataFrame(session.laps.pick_drivers("LEC").get_telemetry())
+
+  print(df.head(3))
+#+end_src
+
+#+RESULTS:
+#+begin_example
+core           INFO 	Loading data for Singapore Grand Prix - Race [v3.4.4]
+req            INFO 	Using cached data for session_info
+req            INFO 	Using cached data for driver_info
+Request for URL https://ergast.com/api/f1/2024/18/results.json failed; using cached response
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connectionpool.py", line 536, in _make_request
+    response = conn.getresponse()
+               ^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connection.py", line 507, in getresponse
+    httplib_response = super().getresponse()
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/http/client.py", line 1428, in getresponse
+    response.begin()
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/http/client.py", line 331, in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/http/client.py", line 292, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/ssl.py", line 1251, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/ssl.py", line 1103, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connectionpool.py", line 843, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/util/retry.py", line 474, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/util/util.py", line 39, in reraise
+    raise value
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connectionpool.py", line 789, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connectionpool.py", line 538, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connectionpool.py", line 369, in _raise_timeout
+    raise ReadTimeoutError(
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='ergast.com', port=443): Read timed out. (read timeout=5.0)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/requests_cache/session.py", line 286, in _resend
+    response = self._send_and_cache(request, actions, cached_response, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/requests_cache/session.py", line 254, in _send_and_cache
+    response = super().send(request, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/fastf1/req.py", line 136, in send
+    return super().send(request, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/requests/adapters.py", line 713, in send
+    raise ReadTimeout(e, request=request)
+requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='ergast.com', port=443): Read timed out. (read timeout=5.0)
+req            INFO 	Using cached data for session_status_data
+req            INFO 	Using cached data for lap_count
+req            INFO 	Using cached data for track_status_data
+req            INFO 	Using cached data for _extended_timing_data
+req            INFO 	Using cached data for timing_app_data
+core           INFO 	Processing timing data...
+Request for URL https://ergast.com/api/f1/2024/18/laps/1.json failed; using cached response
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connectionpool.py", line 536, in _make_request
+    response = conn.getresponse()
+               ^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connection.py", line 507, in getresponse
+    httplib_response = super().getresponse()
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/http/client.py", line 1428, in getresponse
+    response.begin()
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/http/client.py", line 331, in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/http/client.py", line 292, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/ssl.py", line 1251, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/ssl.py", line 1103, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connectionpool.py", line 843, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/util/retry.py", line 474, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/util/util.py", line 39, in reraise
+    raise value
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connectionpool.py", line 789, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connectionpool.py", line 538, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/urllib3/connectionpool.py", line 369, in _raise_timeout
+    raise ReadTimeoutError(
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='ergast.com', port=443): Read timed out. (read timeout=5.0)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/requests_cache/session.py", line 286, in _resend
+    response = self._send_and_cache(request, actions, cached_response, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/requests_cache/session.py", line 254, in _send_and_cache
+    response = super().send(request, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/fastf1/req.py", line 136, in send
+    return super().send(request, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/envs/EMACS/lib/python3.12/site-packages/requests/adapters.py", line 713, in send
+    raise ReadTimeout(e, request=request)
+requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='ergast.com', port=443): Read timed out. (read timeout=5.0)
+req            INFO 	Using cached data for car_data
+req            INFO 	Using cached data for position_data
+req            INFO 	Using cached data for weather_data
+req            INFO 	Using cached data for race_control_messages
+core           INFO 	Finished loading data for 20 drivers: ['4', '1', '81', '63', '16', '44', '55', '14', '27', '11', '43', '22', '31', '18', '24', '77', '10', '3', '20', '23']
+RoundNumber                                                         18
+Country                                                      Singapore
+Location                                                    Marina Bay
+OfficialEventName    FORMULA 1 SINGAPORE AIRLINES SINGAPORE GRAND P...
+EventDate                                          2024-09-22 00:00:00
+EventName                                         Singapore Grand Prix
+EventFormat                                               conventional
+Session1                                                    Practice 1
+Session1Date                                 2024-09-20 17:30:00+08:00
+Session1DateUtc                                    2024-09-20 09:30:00
+Session2                                                    Practice 2
+Session2Date                                 2024-09-20 21:00:00+08:00
+Session2DateUtc                                    2024-09-20 13:00:00
+Session3                                                    Practice 3
+Session3Date                                 2024-09-21 17:30:00+08:00
+Session3DateUtc                                    2024-09-21 09:30:00
+Session4                                                    Qualifying
+Session4Date                                 2024-09-21 21:00:00+08:00
+Session4DateUtc                                    2024-09-21 13:00:00
+Session5                                                          Race
+Session5Date                                 2024-09-22 20:00:00+08:00
+Session5DateUtc                                    2024-09-22 12:00:00
+F1ApiSupport                                                      True
+Name: 18, dtype: object
+core        WARNING 	Failed to preserve data type for column 'X' while merging telemetry.
+core        WARNING 	Failed to preserve data type for column 'Y' while merging telemetry.
+core        WARNING 	Failed to preserve data type for column 'Z' while merging telemetry.
+                     Date            SessionTime DriverAhead  ...           X          Y      Z
+2 2024-09-22 12:03:57.137 0 days 00:57:01.006000              ...  965.002484  88.996483  188.0
+3 2024-09-22 12:03:57.176 0 days 00:57:01.045000              ...  965.000000  89.000000  188.0
+4 2024-09-22 12:03:57.184 0 days 00:57:01.053000              ...  964.999190  89.001147  188.0
+
+[3 rows x 18 columns]
+#+end_example
+
+Now we get create a new variable 'Time_Secs' which is the number of seconds since the start of the race.  We also select only observations whose source is from the car
+
+#+begin_src python :session *Python* :results output
+
+  def to_secs(row):
+    tSecs = row['Time'].total_seconds() 
+    return tSecs
+
+  df['Time_Secs'] = df.apply(to_secs,axis = 1)
+  df = df[df['Source'] == 'car']
+
+#+end_src
+
+#+RESULTS:
+
+* Calculate Accelation
+Now we wish to calculate the instantaneous acceleration vectors at each recorded time so that we can approximate lateral forces undergone by the tires.  To do this, we define the function getAcceleration which takes in X and Y coordinates parametrized by time, and uses numerical differentiation techniques to caluclate acceleration vectors
+
+#+begin_src python :session *Python* :results output
+
+  def getAcceleration(points):
+
+      #points should be np.array with time as well
+
+      #dx = np.gradient(points[:,0])
+      #dy = np.gradient(points[:,1])
+      #dt = np.gradient(points[:,2])
+
+      #dx_dt = dx/dt
+
+      #dy_dt = dy/dt
+      #Convert to meters and calculate first derivatives
+      points[:,0] = points[:,0] / 10
+      points[:,1] = points[:,1] / 10 
+      dx_dt = np.gradient(points[:,0],points[:,2])  #trying to use time in points[:,2] to calculate dx_dt right off the bat
+      dy_dt = np.gradient(points[:,1],points[:,2])
+
+      #Velocities at all observed times points[:,2])
+      velocity = np.array([dx_dt,dy_dt]).transpose()
+
+      #Speed vector at observed times points[:,2]
+      ds_dt = np.sqrt(dx_dt*dx_dt + dy_dt*dy_dt)
+
+      #Normalize tangent velocity vectors
+      Tangent = velocity/np.array([ds_dt]*2).transpose()
+
+      dTx_dt = np.gradient(Tangent[:,0],points[:,2])
+      dTy_dt = np.gradient(Tangent[:,1],points[:,2])
+
+      T_Norm = np.sqrt(dTx_dt*dTx_dt + dTy_dt*dTy_dt)
+
+      #Normalize normal velocity vectors
+      Normal = np.array([dTx_dt,dTy_dt]).transpose() / np.array([T_Norm] * 2).transpose()
+
+      d2x_dt = np.gradient(dx_dt, points[:,2])
+      d2y_dt = np.gradient(dy_dt, points[:,2])
+      d2s_dt = np.gradient(ds_dt,points[:,2])
+
+      curvature = np.abs((d2y_dt * dx_dt - d2x_dt * dy_dt)) / (dx_dt**2 + dy_dt**2)**(3/2)
+
+      a_t = np.array([d2s_dt]*2).transpose() * Tangent
+      a_n = np.array([curvature]*2).transpose() * np.array([ds_dt**2]*2).transpose() * Normal
+      a_tn = a_t + a_n
+      a = np.sqrt(a_tn[:,0]*a_tn[:,0] + a_tn[:,1]*a_tn[:,1])
+
+      ret = [a_t,a_n,a]
+
+      return ret
+
+#+end_src
+
+#+RESULTS:
+
+Lastly, we use the function to get tangential acceleration vectors and normal acceleration vectors, then add these to our dataset.  We output the data to a csv to then be read into an R process for analysis
+
+#+begin_src python :session *Python* :results output
+
+  points = np.array([df['X'],df['Y'],df['Time_Secs']]).transpose()
+  accel = getAcceleration(points)
+  a_t = accel[0]
+  a_n = accel[1]
+  df["at_x"] = a_t[:,0]
+  df["at_y"] = a_t[:,1]
+  df["an_x"] = a_n[:,0]
+  df["an_y"] = a_n[:,1]
+  df['a'] = accel[2]
+
+  df.to_csv("~/Code/R_Programs/F1/TelmLecSing24.csv")
+
+#+end_src
+
+#+RESULTS:
+
+* R analysis
+
+Add necessary libraries for analysis
+#+begin_src R :session *R* :results value
+
+  library(mosaic)
+  library(tidyverse)
+  library(effects)
+  library(ggResidpanel)
+  library(catstats2)
+
+  return(NA)
+#+end_src
+
+#+RESULTS:
+
+Read in data
+#+begin_src R :session *R* :results value
+
+  setwd("~/Code/R_Programs/F1/")
+  LecTelm <- read_csv("TelmLecSing24.csv")
+
+  return(NA)
+#+end_src
+
+#+RESULTS:
+
+Next we will want to analyze total forces put through the tire before pitting and potentially try to create a glm that predicts when a car will pit based on LapTimes and total forces put through the tire. 
+
+To calculate force we will use the F1 regulation minimum weight of 798 kg plus the limit of 110 kg fuel minus [[https://www.redbullracing.com/int-en/bulls-guide-to-fuel][5 - 15kg]] depending most likely on the length of the race.  Ideally I'd also have a weight column in the Telm dataset that incrementally decreases that ~110kg of fuel.
+
+We will use the formulae
+- F_lateral = mass * a_normal
+- F_tangential = mass * a_tangential
+  
+Next we'll want to calculate impulse as the integral of F(t) over t1,t2, where F(t) is Force as a function of time.  We'll need to get the impulse at pit laps for all drivers in all races in the season and what tire the driver is on.  Something Like:
+Race | Driver | Lateral Impulse at Pit | Tangential Impulse at Pit | Tire Compound
+
+Next Steps:
+1. [ ] Create a test python function to calculate Force and Impulse
+2. [ ] Add these to the LecTelm dataset and graph lateral and tangential impulse and force over course of a lap
+3. [ ] Go to first race of 2024 season and get telemetry data for all drivers.  Calculate acceleration, force, and impulse for all of the drivers
+4. [ ] Use the Lap data to determine the time at which drivers pit and their tire compound. Use this information combined with the telemetry to create the above dataset

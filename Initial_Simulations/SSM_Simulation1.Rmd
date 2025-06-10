@@ -1,0 +1,618 @@
+---
+title: "SSM Simulation Code"
+author: "Cole Cappello"
+date: "06-04-2025"
+header-includes:
+    - \usepackage{bm}
+    - \usepackage{amsmath}
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+
+set.seed(123)
+
+knitr::opts_chunk$set(echo = TRUE)
+library(mosaic)
+library(tidyverse)
+library(effects)
+library(ggResidpanel)
+library(catstats2)
+library(Matrix)
+library(KFAS)
+library(rstan)
+
+```
+
+# Basic SSM Simulation
+
+The first model we'll simulate from can be written as:
+
+\begin{align}
+	y_t &= \alpha_t + \epsilon_t \\
+	\alpha_{t+1} &= \alpha_t + \nu
+\end{align}
+
+where \( \epsilon_t \sim N(0,1) \) and \( \nu =.5 \).  We'll suppose we have an initial starting alpha of 1
+
+
+```{r}
+
+# Number of states
+N <- 50
+
+# Nu
+nu <- .5
+
+# Initialize alpha vector
+alpha <- rep(NA, 50)
+alpha[1] <- 1
+
+# Store true latent states
+for(i in 1:(length(alpha)-1)) {    
+    alpha[i+1] <- alpha[i] + nu
+}    
+
+# Vector of errors
+epsilon <- rnorm(n = 50, mean = 0, sd = 1)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+Now we will fit the model with stan and try to recover the parameters. The Linear_SSM.stan file fits a linear SSM with observation error and a deterministic linear process equation.
+
+```{r}
+
+data_stan <- list(TT = length(y), y = y, z0 = 0)
+
+stan_test <- stan(file = "Linear_SSM.stan",
+                  data = data_stan,
+                  chains = 3, iter = 3000)
+
+states <- c(mean(extract(stan_test, pars = c("z1"))[[1]]), colMeans(extract(stan_test, pars = c("z"))[[1]]))
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = 50, by = 1)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+  geom_point()
+
+
+
+stan_test
+
+```
+
+We are able to recover the states and a parameters quite well!
+
+# Deterministic SSM with an Exponential Increase in the Process Equation
+
+Here we'll simulate from the model
+
+\begin{align}
+	y_t &= \alpha_t + \epsilon_t \\
+	\alpha_{t+1} &= \beta\cdot\alpha_t 
+\end{align}
+
+where \( \epsilon_t \sim N(0,1) \) and \( \beta =1.1 \)
+
+```{r}
+
+# Number of states
+N <- 50
+
+# Beta
+beta <- 1.1
+
+# Initialize alpha vector
+alpha <- rep(NA, 50)
+alpha[1] <- 1
+
+# Store true latent states
+for(i in 1:(length(alpha)-1)) {    
+    alpha[i+1] <- beta*alpha[i]
+}    
+
+# Vector of errors
+epsilon <- rnorm(n = 50, mean = 0, sd = 5)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+Again we will fit the model with stan and try to recover the parameters. The Basic_SSM.stan file fits a linear SSM with observation error and a deterministic linear process equation.
+
+```{r}
+
+data_stan <- list(TT = length(y), y = y, z0 = 0)
+
+stan_test <- stan(file = "Basic_SSM.stan",
+                  data = data_stan,
+                  chains = 3, iter = 3000)
+
+states <- c(mean(extract(stan_test, pars = c("z1"))[[1]]), colMeans(extract(stan_test, pars = c("z"))[[1]]))
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = 50, by = 1)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+  geom_point()
+
+stan_test
+
+```
+
+Once again we do a decent job recovering the states.  I did also try a beta of 1.5 and that went horribly because the process blows up towards the end
+
+# Linear SSM with Process Error 
+
+This time we'll simulate from a model that has process error:
+
+\begin{align}
+	y_t &= \alpha_t + \epsilon_t \\
+	\alpha_{t+1} &= \alpha_t + \nu + \omega_t 
+\end{align}
+
+where \( \epsilon_t \sim N(0,1) \), \( \omega_t \sim N(0,1) \) and \( \nu = 1 \).  We'll suppose we have an initial starting alpha of 1
+
+```{r}
+
+# Number of states
+N <- 50
+
+# Nu
+nu <- 1
+
+# Process errors
+omega <- rnorm(n = 50, mean = 0, sd = 1)
+
+# Initialize alpha vector
+alpha <- rep(NA, 50)
+alpha[1] <- 1
+
+# Store true latent states
+for(i in 1:(length(alpha)-1)) {    
+    alpha[i+1] <- alpha[i] + nu + omega[i+1]
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = 50, mean = 0, sd = 1)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+Again we will fit the model with stan and try to recover the parameters. The Basic_SSM2.stan file fits a linear SSM with observation error and process error.
+
+```{r}
+
+
+data_stan <- list(TT = length(y), y = y, z0 = 0)
+
+stan_test <- stan(file = "Basic_SSM2.stan",
+                  data = data_stan,
+                  chains = 3, iter = 3000)
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = 50, by = 1)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+  geom_point()
+
+stan_test
+
+
+```
+
+Here we see things start to break down a bit.  It might be interesting now to compare the mean squared error of our estimates for the latent states versus the observations themselves to makes sure we are still doing better.
+
+```{r}
+
+calc_rMSE <- function(alpha,estimate) {
+  n <- length(alpha)
+  rMSE <- 0
+  for(i in 1:n){
+    rMSE <- rMSE + (estimate[i] - alpha[i])^2
+  }
+  rMSE <- sqrt(rMSE/n)
+  return(rMSE)
+}
+
+calc_rMSE(alpha,states)
+calc_rMSE(alpha, y)
+
+```
+
+Still doing better than the observations. What happens though if we increase the standard errors? lets do the same model with \( \epsilon_t \sim N(0,2) \), \( \omega_t \sim N(0,2) \) and \( \nu = 1 \)
+
+```{r}
+
+# Number of states
+N <- 50
+
+# Nu
+nu <- 1
+
+# Process errors
+omega <- rnorm(n = 50, mean = 0, sd = 2)
+
+# Initialize alpha vector
+alpha <- rep(NA, 50)
+alpha[1] <- 1
+
+# Store true latent states
+for(i in 1:(length(alpha)-1)) {    
+    alpha[i+1] <- alpha[i] + nu + omega[i+1]
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = 50, mean = 0, sd = 2)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+Again we will fit the model with stan and try to recover the parameters. The Basic_SSM2.stan file fits a linear SSM with observation error and process error.
+
+```{r}
+
+
+data_stan <- list(TT = length(y), y = y, z0 = 0)
+
+stan_test <- stan(file = "Basic_SSM2.stan",
+                  data = data_stan,
+                  chains = 3, iter = 5000)
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = 50, by = 1)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+  geom_point()
+
+stan_test
+
+
+```
+Hmm, doesn't look as good.  What's the rMSE?
+
+```{r}
+
+# Estimates
+calc_rMSE(alpha = alpha, estimate = states)
+
+# Observations
+calc_rMSE(alpha = alpha, estimate = y)
+
+```
+
+Not great but we are still doing better than just looking at the observations. What happens if we increase the process error and decrease the observation error?
+
+```{r}
+
+# Number of states
+N <- 50
+
+# Nu
+nu <- 1
+
+# Process errors
+omega <- rnorm(n = 50, mean = 0, sd = 3)
+
+# Initialize alpha vector
+alpha <- rep(NA, 50)
+alpha[1] <- 1
+
+# Store true latent states
+for(i in 1:(length(alpha)-1)) {    
+    alpha[i+1] <- alpha[i] + nu + omega[i+1]
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = 50, mean = 0, sd = 1)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+Again we will fit the model with stan and try to recover the parameters. The Basic_SSM2.stan file fits a linear SSM with observation error and process error.
+
+```{r}
+
+
+data_stan <- list(TT = length(y), y = y, z0 = 0)
+
+stan_test <- stan(file = "Basic_SSM2.stan",
+                  data = data_stan,
+                  chains = 3, iter = 15000)
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = 50, by = 1)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+  geom_point()
+
+stan_test
+
+
+```
+
+```{r}
+
+# Estimates
+calc_rMSE(alpha = alpha, estimate = states)
+
+# Observations
+calc_rMSE(alpha = alpha, estimate = y)
+
+```
+
+Here we seem to be doing worst.  The Observations are somehow a better estimate than the actual state estimates we are using.
+
+```{r}
+
+# Number of states
+N <- 50
+
+# Nu
+nu <- 1
+
+# Process errors
+omega <- rnorm(n = N, mean = 0, sd = 1)
+
+# Initialize alpha vector
+alpha <- rep(NA, N)
+alpha[1] <- 1
+
+# Store true latent states
+for(i in 1:(length(alpha)-1)) {    
+    alpha[i+1] <- alpha[i] + nu + omega[i+1]
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = N, mean = 0, sd = 3)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+Again we will fit the model with stan and try to recover the parameters. The Basic_SSM2.stan file fits a linear SSM with observation error and process error.
+
+```{r}
+
+
+data_stan <- list(TT = length(y), y = y, z0 = 0)
+
+stan_test <- stan(file = "Basic_SSM2.stan",
+                  data = data_stan,
+                  chains = 3, iter = 5000)
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = 50, by = 1)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+  geom_point()
+
+stan_test
+
+
+```
+```{r}
+
+# Estimates
+calc_rMSE(alpha = alpha, estimate = states)
+
+# Observations
+calc_rMSE(alpha = alpha, estimate = y)
+
+```
+
+Here we are doing decently again.
+
+## Conclusion
+
+It seems like we do a halfway decent job of getting back to the true states when the process and observation errors are similar or when the process error is small and the observation error is large.  We do worst when the process error is large but the observation error is small.
+
+If this is an avenue worth exploring more I could write some code to repeatedly fit these models on different samples and determine what the rMSE typically is for both the states and the slope/error parameters.  
+
+
+# Observation Error and Process Error for both the states and the slope
+
+The Last model I'd like to try is as follows:
+
+\begin{align}
+	y_t &= \alpha_t + \epsilon_t \\
+	\alpha_{t+1} &= \alpha_t + \nu_t + \omega_t \\
+	\nu_{t+1} &= \nu_t + \zeta_t
+\end{align}
+
+where \( \epsilon_t \sim N(0,5) \), \( \omega_t \sim N(0,2) \) and \( \zeta_t \sim N(0,1) \).  We'll start with $\alpha_1 = 1$ and $\nu_1 = 1$
+
+```{r}
+
+# Number of states
+N <- 50
+
+# Initialize Nu vector
+nu <- rep(NA,N)
+nu[1] <- 1
+
+# Initialize alpha vector
+alpha <- rep(NA, N)
+alpha[1] <- 1
+
+# Process errors
+omega <- rnorm(n = N, mean = 0, sd = 2)
+zeta <- rnorm(n = N, mean = 0, sd = .5)
+
+
+
+# Store true latent states
+for(i in 1:(length(alpha)-1)) {    
+    nu[i+1] <- nu[i] + zeta[i]
+    alpha[i+1] <- alpha[i] + nu[i] + omega[i+1]
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = N, mean = 0, sd = 5)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+Again we will fit the model with stan and try to recover the parameters. The Basic_SSM3.stan file fits a linear SSM with observation error and process error and a slope that follows a random walk.  I included some informative priors in the stan code but it still seems to do okay even without them.
+
+```{r}
+
+
+data_stan <- list(TT = length(y), y = y, z0 = 1)
+
+stan_test <- stan(file = "Basic_SSM3.stan",
+                  data = data_stan,
+                  chains = 3, iter = 10000)
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+nuhat <- colMeans(extract(stan_test, pars = c("v"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = 50, by = 1)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y,
+              nu = nu,
+              nuhat = nuhat)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat, observations), names_to = "type", values_to = "value")
+
+df_long2 <- df1 %>%
+  pivot_longer(cols = c(nu, nuhat), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+  geom_point()
+
+ggplot(df_long2, aes(x = time, y = value, color = type)) +
+  geom_point()
+
+stan_test
+
+
+```
+
+```{r}
+
+# Estimates
+calc_rMSE(alpha = alpha, estimate = states)
+
+# Observations
+calc_rMSE(alpha = alpha, estimate = y)
+
+```

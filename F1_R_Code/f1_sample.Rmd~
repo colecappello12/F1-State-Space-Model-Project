@@ -1,0 +1,122 @@
+---
+title: "Sample Code for F1 Dataset"
+author: "Cole"
+date: "05-14-2025"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(mosaic)
+library(tidyverse)
+library(effects)
+library(ggResidpanel)
+library(catstats2)
+library(Matrix)
+library(KFAS)
+
+```
+
+# Tire Degradation Plots
+
+A standard way to plot tire degredation is to look at lap time versus tire life.  Tire life is the number of laps done on that tire. When a car pits for new tires, the tire life count goes back to zero.  The laps.csv dataset contains tire type (hard, medium, soft), lap time, and tire life. Here are some example plots.
+
+As a note, I am removing laps during which the driver pits because these lap times are much longer than a normal lap.
+
+```{r, message=FALSE}
+
+bahrain_laps <- read_csv("bahrain_laps.csv")
+
+filter(bahrain_laps, Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime)) %>%
+    ggplot(mapping = aes(x = TyreLife, y = LapTime, colour = Compound)) +
+    geom_point() +
+    geom_smooth() +
+    labs(title = "Tire Degration -- Charles Leclerc (Ferrari)",
+         x = "Tire Life",
+         y = "Lap Time (Seconds)")
+
+filter(bahrain_laps, Driver == "VER", is.na(PitOutTime) & is.na(PitInTime)) %>%
+    ggplot(mapping = aes(x = TyreLife, y = LapTime, colour = Compound)) +
+    geom_point() +
+    geom_smooth() +
+    labs(title = "Tire Degration -- Max Verstappen (Red Bull)",
+         x = "Tire Life",
+         y = "Lap Time (Seconds)")
+
+filter(bahrain_laps, Driver == "NOR", is.na(PitOutTime) & is.na(PitInTime)) %>%
+    ggplot(mapping = aes(x = TyreLife, y = LapTime, colour = Compound)) +
+    geom_point() +
+    geom_smooth() +
+    labs(title = "Tire Degration -- Lando Norris (McLaren)",
+         x = "Tire Life",
+         y = "Lap Time (Seconds)")
+
+```
+
+
+The plot for Charles Leclerc shows the most obvious signs of tire degradation. You can see that as tire life increases, there is a small but noticeably consistent increase in lap times.
+
+The plot for Lando Norris is quite interesting because, as tire life increases, we don't really see much of a drop off in lap times for the hard tire. The McLaren car is generally considered the best this season because it treats its tires so well.  The data seems to support that the McLaren has low tire degradtion.
+
+One additional thing to consider is that the cars start with a full load of fuel (around 110 kg), and by the end of the race are usually close to empty. The weight loss is worth a significant amount of time, so even if the lap times stay consistent throughout the entire stint, there is likely still some tire degradation occurring that is made up for by the weight loss due to fuel consumption. 
+
+
+# Telemetry
+
+Telemetry data contains things like RPMs, throttle usage, brake usage, car position, and gear as a function of time. Observations are typically recorded every .1-.5 seconds.  Another interesting variable is the distance to the driver ahead.  Having clear air in front of you is generally considered far better for tire degradtion.  Due to the aerodynamics of f1 cars, being close behind someone else causes increased tire degradation.  The cars use air flow to cool the tires and keep them in the working temperature window, so disruptions to this airflow can disrupt cooling and cause thermal degradation.  I'll load the dataset in here and do a simple plot of position. This particular dataset only contains the telemetry data for Chalres Leclerc and it already contains almost 45000 observations.  
+
+```{r}
+
+telm <- read_csv("lec_telm.csv")
+
+plot(telm$X, telm$Y)
+
+```
+
+What you see is the shape of the circuit. One thing which I did previously with this data was calculte acceleration vectors to try to understand longitudinal and lateral forces put through the tires. I think this could be very interesting to analyze as well.  I have some code written up to do these calculations already but haven't cleaned it up.  I can clean it up and add comments explaining it soon.
+
+
+# Initial State Space Model Attempts
+
+
+```{r}
+
+bahrain_laps <- bahrain_laps %>%
+    mutate(Compound = factor(Compound))
+
+hard_stint <- bahrain_laps %>%
+    filter(Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime), Compound == "HARD")
+
+hard_stint <- hard_stint[-c(1,2),]
+
+SSmodel1 <- SSModel(LapTime ~ SSMtrend(degree = 2, Q = list(matrix(NA), matrix(.01))),data = hard_stint, H = matrix(NA))
+
+SSM1_fit <- fitSSM(model = SSmodel1, inits = c(0,0))
+
+SSM1_smoothed <- KFS(model = SSM1_fit$model)
+
+hard_stint$smoothed <- SSM1_smoothed$alphahat[1:22,1]
+
+hard_stint %>%
+    ggplot(mapping = aes(x = TyreLife, y = LapTime, col = "BLUE")) +
+    geom_point(mapping = aes(y = smoothed, col = "RED")) +
+    geom_line(mapping = aes(y = LapTime))
+
+```
+
+
+## Bayesian with slope random component estimated
+
+```{r}
+
+library(rstan)
+
+dataStan <- list(y = hard_stint$LapTime, TT = length(hard_stint$LapTime), z0 = 0, v0 = 0)
+
+stan_test <- stan(file = "tire_deg_model1.stan",
+                data = dataStan,
+                chains = 3, iter = 3000)
+
+```

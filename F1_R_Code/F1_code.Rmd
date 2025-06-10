@@ -1,0 +1,107 @@
+---
+title: "F1 Code"
+author: "Cole"
+date: "2024-10-19"
+output:
+	pdf_document: 
+		latex_engine: xelatex
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(mosaic)
+library(tidyverse)
+library(effects)
+library(ggResidpanel)
+library(catstats2)
+```
+
+## Tire Deg Plots
+
+```{r}
+setwd("~/Code/R_Programs/F1")
+sing <- read_csv("Singapore2024Laps.csv")
+
+NorLaps <- sing %>%
+    filter(Driver == "NOR")
+
+lm(formula = filter(sing,Team == "McLaren",is.na(PitOutTime) & is.na(PitInTime)) %>% 
+  ggplot(mapping = aes(x = TyreLife, y = LapTime_Seconds, colour = Compound)) + 
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Tyre Degradation -- McLaren",
+       x = "Tyre Life",
+       y = "Lap Time (Seconds)"))
+filter(sing, Team == "Ferrari", is.na(PitOutTime) & is.na(PitInTime)) %>% 
+  ggplot(mapping = aes(x = TyreLife, y = LapTime_Seconds, colour = Compound)) + 
+  geom_point() +
+  geom_smooth() +
+  labs(title = "Tyre Degradation -- Ferrari",
+       x = "Tyre Life",
+       y = "Lap Time (Seconds)")
+filter(sing, Team == "Red Bull Racing", is.na(PitOutTime) & is.na(PitInTime)) %>%
+    ggplot(mapping = aes(x = TyreLife, y = LapTime_Seconds, colour = Compound)) +
+    geom_point() +
+    geom_smooth() +
+    labs(
+        title = "Tyre Degradation -- RBR",
+        x = "Tyre Life",
+        y = "Lap Time (Seconds)"
+  )
+
+```
+
+## Tentative Models
+
+
+```{r}
+library(MASS)
+
+sing1 <- sing %>% 
+  filter(is.na(PitOutTime) & is.na(PitInTime))
+#lm1 <- lm(data = sing1, LapTime_Seconds ~ TyreLife + Compound)
+#lm2 <- lm(data = sing1, LapTime_Seconds ~ TyreLife*Compound)
+
+lm3 <- lm(data = sing1, LapTime_Seconds ~ TyreLife*Compound + Driver)
+lm4 <- lm(data = sing1, LapTime_Seconds ~ poly(TyreLife, degree = 2)*Compound + Driver)
+lm5 <- lm(data = sing1, log(LapTime_Seconds) ~ TyreLife*Compound*Driver)
+lm6 <- lm(data = sing1, LapTime_Seconds ~ poly(TyreLife, 4)*Compound*Driver)
+resid_panel(lm3)
+resid_panel(lm5)
+#summary(lm3)
+summary(lm4)
+#ummary(lm5)
+#summary(lm6)
+plot(allEffects(lm3, residuals = T),grid = T)
+plot(allEffects(lm4, residuals = T), grid = T)
+lmStep <- stepAIC(lm6,direction = "backward", trace = 1)
+summary(lmStep)
+```
+
+##Force Data
+
+```{r, message = FALSE}
+telm <- read_csv("Singapore2024LapTelemetry4.csv")
+telm1 <- telm %>% 
+  filter(Time_Secs <= 107)
+telm2 <- telm1 %>% 
+  mutate(a_t = sqrt(at_x*at_x + at_y*at_y),
+         a_n = sqrt(an_x*an_x + an_y*an_y))
+boxplot(telm1$at_x)
+boxplot(telm1$at_y)
+boxplot(telm1$an_x)
+boxplot(telm1$an_y)
+plot(telm1$X, telm1$Y)
+
+telm2 %>% 
+  ggplot(mapping = aes(x = Time_Secs, y = an_x)) +
+  geom_point(mapping = aes(y = an_y), col="red", alpha =.5) +
+  geom_point(mapping = aes(y = an_x), col ="blue",alpha =.5) +
+  geom_smooth(method = "loess", span = .05) +
+  geom_smooth(mapping = aes(y = an_y),method = "loess", span = .05,col = "red")
+
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.P

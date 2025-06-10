@@ -1,0 +1,57 @@
+* Next Steps
+
+** TODO Simulations [0/3]
+- [ ] Simulate Data from basic versions of model
+- [ ] Fit Bayesian SSM models to the simulated data and try to recover the parameters
+- [ ] Create some informative graphics for these
+
+** TODO Set up a GitHub Repo
+
+* State Space Models
+** Assumptions
+- SSMs assume the state process is a markov proces (state at time t depends only on state t-1)
+- Observations are independent after accounting for states
+
+** Continuous Time
+- It may be beneficial to use a continuous time model for the telemetry because the data are recorded at unequal time intervals (and the process is intrinsically continuous)
+
+** Discrete Time
+- If you want to do the model on lap times, then discrete may be an option since each time unit could be a lap
+
+** Multivariate Structural Time Series
+- Basically, your observations y_t are a vector now.  This allows you to model multiple responses and define a correlation structure between them
+  
+* Data Cleaning Considerations
+
+** Pit Laps
+
+** Laps in which the driver is close to a car in front
+
+** First Two or three laps of each stint
+- Should be gotten rid of most likely since the driver will be bringing the tires into the "temperature window"
+  
+** Fuel corrected laptimes
+- Will potentially want to adjust the laptimes by .03 seconds a lap for loss of fuel
+- Could ask about the possibility of estimating this quantity
+
+* Backlog/Ideas for later
+
+** Need to find a way to incorporate other drivers/constructors and tire type in the model
+- Right now the model only works for a single driver
+  - Might be able to add covariates for the driver
+  
+** Perhaps a way to incorporate telemetry data
+- Need to learn about ODEs most likely
+
+** What really is \alpha in the model?
+- Is it the true pace or average pace of the driver
+
+** Could we consider the season as a time series and find covariates that help predict tire degredation differences from grand prix to grand prix?  
+
+** How to choose optimal starting values for Bayesian implementation
+
+* Misc Questions
+
+** Thinking about applying to phd programs
+- Could Measure Theory be a good course to take next semester in the math department ?
+- If not, could I also take mathematical optimization ?

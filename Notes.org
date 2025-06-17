@@ -1,11 +1,24 @@
 * Next Steps
 
-** TODO Simulations [0/3]
-- [ ] Simulate Data from basic versions of model
-- [ ] Fit Bayesian SSM models to the simulated data and try to recover the parameters
-- [ ] Create some informative graphics for these
+** TODO F1 Specific Simulations [1/3]
+- [X] Over a single stint
+- [ ] Multiple Stints/Full Race
+- [ ] Multiple drivers
 
-** TODO Set up a GitHub Repo
+** DONE Add Confidence intervals to GGplot
+CLOSED: [2025-06-11 Wed 20:45]
+
+** DONE Read more sections of the SSM review [4/4]
+CLOSED: [2025-06-16 Mon 19:07]
+- [X] Prior selection/Predictive checks`
+- [X] Formulating an Appropriate SSM for your Data
+- [X] Diagnostics and Model Validation
+  - Posterior Predictive Checks
+  - One-Step Ahead Residuals
+- [X] Cross-Validation
+
+** DONE Posterior Predictive Distribution  
+CLOSED: [2025-06-16 Mon 19:06]
 
 * State Space Models
 ** Assumptions
@@ -20,6 +33,47 @@
 
 ** Multivariate Structural Time Series
 - Basically, your observations y_t are a vector now.  This allows you to model multiple responses and define a correlation structure between them
+
+** Diagnostics and model validation (section from ESA review paper)
+- First, check to see that the parameter estimates seem reason reasonable based on your own background knowledge.
+- Assess the influnece of outliers on observations
+- Examine whether model assumptions are reasonable (i.e. are the errors actually normally distributed?)
+- Examine goodness of fit:
+  - At the observation level, this is the distance of an observation from its prediction
+  - At the model level, this is the fit of a model to all observations
+- Assess the model's predictive accuracy with cross validation.  Use observations 1 to t to predict t+1
+
+*** Posterior Predictive Checks
+- Used to quantify discrepancies between the data and the model
+- If the model fits the data well then the data generated from the model should have characteristics similar to the data itself.
+- To get your posterior predictive draws:
+  1) You've got draws from the posterior distribution for your parameters from your stanfit object
+  2) Use those draws and the the measurement equation to simulate a sequence of observations from each draw.
+  3) Now you have your y^{rep} for each draw.  Calculate a test statistic for each of these and plot the histogram.  Likely you'll want to use the discrepancy function
+  4) Bayesplot has built in functions to do some of the plotting, so it'd be worth it to look into these
+
+- The Next thing to do is look at the distribution of the process errors
+
+*** Prior Predictive Checks/Choosing Priors
+- Prior Predictive Checks are essentially the same thing as posterior predictive checks, except instead of taking parameter draws from the posterior distribution, you take them from the prior distribution and then simulate your relicates.  Then you can calculate your test statistic
+- When choosing priors, you can fit your model and sample from the posterior, then plot a histogram of a particular parameter of interest and overlay the prior distribution.  If you are sampling in the tails of the prior, you may want to update the prior distribution.
+
+*** One-step-ahead residuals
+To compute the [[https://stats.stackexchange.com/questions/476838/one-step-ahead-predicitons-in-a-bayesian-state-space-model][one-step-ahead observation estimate]] (\hat{y}_{t+1}) in a Bayesian framework:
+1) Fit the model on observations 1 to t
+2) You now have a bunch of draws from the posterior distribution fitted on observations 1 to t.  Sample from p(\alpha_{t+1} | \alpha_t^{(i)}, \theta^(i)).  In other words, sample from state transition distribution given the values sampled from the posterior distribution for \alpha_t and the other parameters.
+3) Then sample from your observation/measurement distribution p(y_{t+1} | \alpha_{t+1}^{(i)}, \theta^{(i)}).
+4) Repeat 1-3 for all the posterior draws and use mean/median to estimate the next observation.
+
+   
+- The standardized one step ahead residuals should follow a standard normal distribution if the observation and process error are both normally distributed.
+- Check QQ-Plots, ACF plots, and residuals vs observed values to check for non-constant variance
+- According to ESA article, the parameters used should be calculated on the entire dataset *This may contradict the algorithm I described above.  More thought should be given to this before implementation*
+
+*** Cross-Validation
+- Apparently not much research has been done in how to do this properly for SSMs.  I'd say that doing the one step ahead residuals but not calculating the parameters on the entire dataset
+- We can try to do [[https://stats.stackexchange.com/questions/14099/using-k-fold-cross-validation-for-time-series-model-selection][forward chaining/rolling cross-validation]].  I think this may be difficult though if we don't have much data to being with (10-20 laps)
+- The other thing we can do is calculate WAIC by the calculation in Gelman
   
 * Data Cleaning Considerations
 
@@ -55,3 +109,14 @@
 ** Thinking about applying to phd programs
 - Could Measure Theory be a good course to take next semester in the math department ?
 - If not, could I also take mathematical optimization ?
+
+* Completed
+** DONE Initial Simulations [3/3]
+CLOSED: [2025-06-11 Wed 10:20]
+- [X] Simulate Data from basic versions of model
+- [X] Fit Bayesian SSM models to the simulated data and try to recover the parameters
+- [X] Create some informative graphics for these
+
+** DONE Set up a GitHub Repo
+CLOSED: [2025-06-11 Wed 10:19]
+

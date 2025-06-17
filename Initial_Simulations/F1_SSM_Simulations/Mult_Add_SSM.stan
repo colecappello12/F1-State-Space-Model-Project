@@ -8,11 +8,11 @@ data {
 /*----------------------- Parameters --------------------------*/
 /* Parameter block: defines the variables that will be sampled */
 parameters {
-  real<lower=0> sdo; // Standard deviation of the observation equation
+  real<lower=0> sdo; // Standard deviation of the process equation
   real<lower=0> sdp; // Standard deviation of the process equation
-  real<lower=0> sdv; // Standard deviation of the slope 
-  vector[TT] z;      // Latent state vector
-  vector[TT] v;      // Slope vector
+  vector[TT] z;      // Latent State vector
+  real b;    	     // Multiplicative decay parameter
+  real v;            // Slope parameter
   
 
 }
@@ -21,19 +21,21 @@ parameters {
 /* Model block: defines the model */
 model {
   
-  sdo ~ normal(5,1);
-  sdp ~ normal(2,1);
-  sdv ~ normal(1,1);
-  
+  sdo ~ normal(0,.5);
+  sdp ~ normal(0,.5);
+  // Could include a prior for the slope v
+  v ~ normal(.1,.5);
+  b ~ normal(1,.1);
 
-  z[1] ~ normal(z0, 1);
-  v[1] ~ normal(1,1);
+  z[1] ~ normal(z0, .5);
   for(t in 2:TT){
-    v[t] ~ normal(v[t-1], sdv);
-    z[t] ~ normal(z[t-1] + v[t-1], sdp);
+    z[t] ~ normal(b*z[t-1] + v, sdp);
   }
   
   for(t in 1:TT){
     y[t] ~ normal(z[t], sdo);
   }
 }
+
+
+

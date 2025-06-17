@@ -542,7 +542,7 @@ alpha[1] <- 1
 
 # Process errors
 omega <- rnorm(n = N, mean = 0, sd = 2)
-zeta <- rnorm(n = N, mean = 0, sd = .5)
+zeta <- rnorm(n = N, mean = 0, sd = 1)
 
 
 

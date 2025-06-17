@@ -87,7 +87,7 @@ bahrain_laps <- bahrain_laps %>%
     mutate(Compound = factor(Compound))
 
 hard_stint <- bahrain_laps %>%
-    filter(Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime), Compound == "HARD")
+    filter(Driver == "VER", is.na(PitOutTime) & is.na(PitInTime), Compound == "MEDIUM",TyreLife >= 12)
 
 hard_stint <- hard_stint[-c(1,2),]
 
@@ -97,7 +97,7 @@ SSM1_fit <- fitSSM(model = SSmodel1, inits = c(0,0,0))
 
 SSM1_smoothed <- KFS(model = SSM1_fit$model)
 
-hard_stint$smoothed <- SSM1_smoothed$alphahat[1:22,1]
+hard_stint$smoothed <- SSM1_smoothed$alphahat[1:18,1]
 
 hard_stint %>%
     ggplot(mapping = aes(x = TyreLife, y = LapTime, col = "BLUE")) +
@@ -128,6 +128,6 @@ hard_stint$bayesStates <- states
 hard_stint %>%
     ggplot(mapping = aes(x = TyreLife, y = LapTime, col = "BLUE")) +
     geom_point(mapping = aes(y = bayesStates, col = "RED")) +
-    geom_line(mapping = aes(y = LapTime))
+    geom_point(mapping = aes(y = LapTime))
 
 ```

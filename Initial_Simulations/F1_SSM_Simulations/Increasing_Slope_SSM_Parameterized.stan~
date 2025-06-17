@@ -1,0 +1,50 @@
+/*----------------------- Data --------------------------*/
+data {
+  int TT;             // Length of time series
+  vector[TT] y;       // Observations
+  real z0;            // Initial state value
+  real v0;            // Initial slope value
+}
+parameters {
+  real<lower=0> sdo;           // Observation error SD
+  real<lower=0> sdp;           // Process error SD
+  vector[TT] z_raw;            // Now length TT, including z[1]
+  real v1;                     // Initial slope
+  real b;                      // Slope increase
+}
+transformed parameters {
+  vector[TT] z;
+  vector[TT - 1] v;
+
+  v[1] = v1 + b;
+  for (t in 2:(TT - 1)) {
+    v[t] = v[t - 1] + b;
+  }
+
+  // Non-centered parameterization of z
+  z[1] = z0 + 0.5 * z_raw[1];  // z[1] ~ normal(z0, 0.5)
+  for (t in 2:TT) {
+    z[t] = z[t - 1] + v[t - 1] + sdp * z_raw[t];
+  }
+}
+model {
+  // Priors
+  sdo ~ normal(0.1, 0.1);
+  sdp ~ normal(.1, 0.1);
+  v1 ~ normal(v0, 0.5);
+  b  ~ normal(0, 0.1);
+
+  // Standard normal prior for raw latent innovations
+  z_raw ~ normal(0, 1);
+
+  // Observation model
+  y ~ normal(z, sdo);
+}
+generated quantities {
+  // y_rep for posterior predictive checks
+  vector[TT] y_rep;
+  for (t in 1:TT) {
+      y_rep[t] = normal_rng(z[t],sdo);
+  }
+}
+

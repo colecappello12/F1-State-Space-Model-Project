@@ -1,0 +1,712 @@
+---
+title: "F1 Specific Simulations"
+author: "Cole"
+date: "06-11-2025"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(message = FALSE)
+
+set.seed(123)
+
+knitr::opts_chunk$set(echo = TRUE)
+library(mosaic)
+library(tidyverse)
+library(effects)
+library(ggResidpanel)
+library(catstats2)
+library(Matrix)
+library(KFAS)
+library(rstan)
+
+calc_rMSE <- function(alpha,estimate) {
+  n <- length(alpha)
+  rMSE <- 0
+  for(i in 1:n){
+    rMSE <- rMSE + (estimate[i] - alpha[i])^2
+  }
+  rMSE <- sqrt(rMSE/n)
+  return(rMSE)
+}
+
+```
+
+Here are a couple of example tire degradation plots from actual race data.
+
+```{r, message=FALSE}
+
+bahrain_laps <- read_csv("bahrain_laps.csv")
+
+filter(bahrain_laps, Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime)) %>%
+    ggplot(mapping = aes(x = TyreLife, y = LapTime, colour = Compound)) +
+    geom_point() +
+    geom_smooth() +
+    labs(title = "Tire Degration -- Charles Leclerc (Ferrari)",
+         x = "Tire Life",
+         y = "Lap Time (Seconds)")
+
+filter(bahrain_laps, Driver == "VER", is.na(PitOutTime) & is.na(PitInTime)) %>%
+    ggplot(mapping = aes(x = TyreLife, y = LapTime, colour = Compound)) +
+    geom_point() +
+    geom_smooth() +
+    labs(title = "Tire Degration -- Max Verstappen (Red Bull)",
+         x = "Tire Life",
+         y = "Lap Time (Seconds)")
+
+filter(bahrain_laps, Driver == "NOR", is.na(PitOutTime) & is.na(PitInTime)) %>%
+    ggplot(mapping = aes(x = TyreLife, y = LapTime, colour = Compound)) +
+    geom_point() +
+    geom_smooth() +
+    labs(title = "Tire Degration -- Lando Norris (McLaren)",
+         x = "Tire Life",
+         y = "Lap Time (Seconds)")
+
+```
+
+Based on these, it is reasonable to assume a maximum stint length of 30 laps (that seems extreme though, so I'll probably knock it down to 25). We will also assume that the fastest lap pace is 96 seconds and the true rate of degredation is .1 seconds per lap.
+
+# Deterministic Process
+
+The first model we simulate from will be
+
+\begin{align}
+	y_t &= \alpha_t + \epsilon_t \\
+	\alpha_{t+1} &= \alpha_t + \nu
+\end{align}
+
+where \( \epsilon_t \sim N(0,.25) \) and \( \nu =.1 \).
+
+```{r}
+
+# Number of states
+N <- 25
+
+# Nu
+nu <- .1
+
+# Initialize alpha vector
+alpha <- rep(NA, N)
+alpha[1] <- 96
+
+# Store true latent states
+for(i in 1:(length(alpha)-1)) {    
+    alpha[i+1] <- alpha[i] + nu
+}    
+
+# Vector of errors
+epsilon <- rnorm(n = N, mean = 0, sd = .25)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+Now we will fit the model with stan and try to recover the parameters. The Linear_SSM.stan file fits a linear SSM with observation error and a deterministic linear process equation.
+
+```{r}
+
+data_stan <- list(TT = length(y), y = y, z0 = 0)
+
+stan_test <- stan(file = "Linear_SSM.stan",
+                  data = data_stan,
+                  chains = 3, iter = 3000)
+
+states <- c(mean(extract(stan_test, pars = c("z1"))[[1]]), colMeans(extract(stan_test, pars = c("z"))[[1]]))
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = N, by = 1)
+
+z_stan <- extract(stan_test, pars = c("z"))[[1]]
+z_CIl <- c(96,apply(z_stan, 2, quantile, probs=0.025))
+z_CIu <- c(96,apply(z_stan, 2, quantile, probs=0.975))
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y,
+              z_CIl = z_CIl,
+              z_CIu = z_CIu)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+    geom_point() +
+    geom_ribbon(aes(ymin = z_CIl, ymax = z_CIu), fill = "black",color = "gray", alpha = .1)
+
+# Estimated Slope:
+mean(extract(stan_test, pars = c("v"))[[1]])
+
+# Estimated Observation Error:
+mean(extract(stan_test, pars = c("sdo"))[[1]])
+
+```
+
+
+# Process Error
+
+This time we'll simulate from a model that has process error:
+
+\begin{align}
+	y_t &= \alpha_t + \epsilon_t \\
+	\alpha_{t+1} &= \alpha_t + \nu + \omega_t 
+\end{align}
+
+where \( \epsilon_t \sim N(0,.15) \), \( \omega_t \sim N(0,.05) \) and \( \nu = .1 \).  We'll suppose we have an initial starting alpha of 96.
+
+Now if $\alpha_t$ represents something like the underlying/true pace of the tire, then the "observation error" could really be considered something like error due to driver inconsistencies over a lap. Because of this I think it makes sense to use a process error that is similar to or less than the "observation error".
+
+I will also admit I am a bit partial to this because the model seems to perform much worse when the process error increases to be greater than the observation error.
+
+
+```{r}
+
+# Number of states
+N <- 25
+
+# Nu
+nu <- .1
+
+# Process errors
+omega <- rnorm(n = N, mean = 0, sd = .05)
+
+# Initialize alpha vector
+alpha <- rep(NA, N)
+alpha[1] <- 96
+
+# Store true latennt states
+for(i in 1:(length(alpha)-1)) {    
+    alpha[i+1] <- alpha[i] + nu + omega[i+1]
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = N, mean = 0, sd = .15)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+Again we will fit the model with stan and try to recover the parameters. The Basic_SSM2.stan file fits a linear SSM with observation error and process error.
+
+```{r}
+
+data_stan <- list(TT = length(y), y = y, z0 = 96)
+
+stan_test <- stan(file = "Basic_SSM2.stan",
+                  data = data_stan,
+                  chains = 3, iter = 15000)
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = N, by = 1)
+
+z_stan <- extract(stan_test, pars = c("z"))[[1]]
+z_CIl <- apply(z_stan, 2, quantile, probs=0.025)
+z_CIu <- apply(z_stan, 2, quantile, probs=0.975)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y,
+              z_CIl = z_CIl,
+              z_CIu = z_CIu)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+    geom_point() +
+    geom_ribbon(aes(ymin = z_CIl, ymax = z_CIu), fill = "black",color = "gray", alpha = .1)
+
+# Estimated Slope:
+mean(extract(stan_test, pars = c("v"))[[1]])
+
+# Estimated Observation Error:
+mean(extract(stan_test, pars = c("sdo"))[[1]])
+
+# Estimated Process Error
+mean(extract(stan_test, pars = c("sdp"))[[1]])
+
+calc_rMSE(alpha,states)
+calc_rMSE(alpha, y)
+
+```
+
+
+# Multiplicative and Additive Decay
+
+The data seems to support the idea that the decay rate increases as we get further along in the stint.  So we can try using the multiplicative and additive decay model.
+
+Here we'll simulate from the model
+
+\begin{align}
+	y_t &= \alpha_t + \epsilon_t \\
+	\alpha_{t+1} &= \beta\cdot\alpha_t + \nu + \omega_t
+\end{align}
+
+where \( \epsilon_t \sim N(0,.15) \), \( \beta = 1.05 \), $\nu = .1$, $\omega_t \sim N(0,.05)$
+
+```{r}
+
+# Number of states
+N <- 25
+
+# Beta
+beta <- 1.005
+
+# Nu
+nu <- 0
+
+# Initialize process errors
+
+omega <- rnorm(n = N, mean = 0, sd = .05)
+
+# Initialize alpha vector
+alpha <- rep(NA, N)
+alpha[1] <- 96
+
+# Store true latent states
+for(i in 1:(length(alpha)-1)) {    
+    alpha[i+1] <- beta*alpha[i] + nu + omega[i+1]
+}    
+
+# Vector of errors
+epsilon <- rnorm(n = N, mean = 0, sd = .15)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+The Mult_Add_SSM.stan file contains the code to fit this model.
+
+```{r}
+
+data_stan <- list(TT = length(y), y = y, z0 = 96)
+
+stan_test <- stan(file = "Mult_Add_SSM.stan",
+                  data = data_stan,
+                  chains = 3, iter = 15000)
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = N, by = 1)
+
+z_stan <- extract(stan_test, pars = c("z"))[[1]]
+z_CIl <- apply(z_stan, 2, quantile, probs=0.025)
+z_CIu <- apply(z_stan, 2, quantile, probs=0.975)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y,
+              z_CIl = z_CIl,
+              z_CIu = z_CIu)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+    geom_point() +
+    geom_ribbon(aes(ymin = z_CIl, ymax = z_CIu), fill = "black",color = "gray", alpha = .1)
+
+# Estimated Slope:
+mean(extract(stan_test, pars = c("v"))[[1]])
+
+# Estimated Observation Error:
+mean(extract(stan_test, pars = c("sdo"))[[1]])
+
+# Estimated Process Error
+mean(extract(stan_test, pars = c("sdp"))[[1]])
+
+calc_rMSE(alpha,states)
+calc_rMSE(alpha, y)
+
+```
+
+
+Unfortunately, this just doesn't really seem to work.  Doesn't really matter how I try to change beta.  If I make it small enough to work with the interval I want, it ends up basically just being linear.  I have another idea though.
+
+# Linearly Increasing Slope
+
+What if we just let the slope increase linearly with each step to capture some of that increasing decay rate behavior?
+
+Here we'll simulate from the model
+
+\begin{align}
+	y_t &= \alpha_t + \epsilon_t \\
+	\alpha_{t+1} &= \alpha_t + \nu_t + \omega_t \\ 
+	\nu_{t+1} &= \nu_t + \beta
+\end{align}
+
+where \( \epsilon_t \sim N(0,.3) \), \( \beta = .01 \), $\nu_1 = .01$, $\omega_t \sim N(0,.1)$, and $\alpha_1 = 96$.
+
+```{r}
+
+
+# Number of states
+N <- 25
+
+# Beta
+beta <- .01
+
+# Initialize nu vector
+nu <- rep(NA, N)
+nu[1] <- .01
+
+# Initialize alpha vector
+alpha <- rep(NA, N)
+alpha[1] <- 96
+
+# Initialize process errors
+omega <- rnorm(n = N, mean = 0, sd = .1)
+
+# Store true latent states
+for(i in 2:(length(alpha))) {    
+    alpha[i] <- alpha[i-1] + nu[i-1] + omega[i]
+    nu[i] <- nu[i-1] + beta
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = N, mean = 0, sd = .3)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+The Increasing_Slope_SSM.stan file fits the above model.  Increasing_Slope_SSM_Parameterized.stan fits a parameterized version of the model to try to help with divergences.
+
+```{r}
+
+data_stan <- list(TT = length(y), y = y, z0 = 96, v0 = .01, sdo0 = .3)
+
+stan_test <- stan(file = "Increasing_Slope_SSM_Parameterized.stan",
+                  data = data_stan,
+                  chains = 3, iter = 30000,
+                  control = list(adapt_delta = .99))
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = N, by = 1)
+
+z_stan <- extract(stan_test, pars = c("z"))[[1]]
+z_CIl <- apply(z_stan, 2, quantile, probs=0.025)
+z_CIu <- apply(z_stan, 2, quantile, probs=0.975)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y,
+              z_CIl = z_CIl,
+              z_CIu = z_CIu)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+    geom_point() +
+    geom_ribbon(aes(ymin = z_CIl, ymax = z_CIu), fill = "black",color = "gray", alpha = .1)
+
+
+# Estimated Observation Error:
+mean(extract(stan_test, pars = c("sdo"))[[1]])
+
+# Estimated Process Error
+mean(extract(stan_test, pars = c("sdp"))[[1]])
+
+calc_rMSE(alpha,states)
+calc_rMSE(alpha, y)
+
+```
+ 
+
+This looks pretty good! It seems similar to the pattern observed in the laptime data and we are able to infer back to the true states quite well so long as the observation error is higher than the process error. 
+
+Now I'd like to implement some of the various model checks I've been reading about.
+
+## Posterior Predictive Checks
+
+For the previous model, we will do a posterior predictive check with the test statistic:
+
+\[
+T(\mathbf{y},\theta) = \sum_{t=1}^T (y_t - \hat{y}_{t|1:T})^2
+\]
+
+where $\hat{y}_{t|1:T})$ is the state estimate for the model at time t.
+
+```{r}
+
+Tstat <- function(y) {
+    return(sum((y - df1$alphahat)^2))
+}    
+
+posterior <- extract(stan_test)
+yrep <- posterior$y_rep
+
+Tstats <- rep(NA,dim(yrep)[1])
+for(i in 1:dim(yrep)[1]) {
+    Tstats[i] <- Tstat(yrep[i,])
+}
+
+hist(Tstats)
+abline(v = Tstat(df1$observations), col = 'blue')
+
+Tobs <- Tstat(df1$observations)
+count <- 0
+for(i in 1:length(Tstats)) {
+    if(Tstats[i] > Tobs) {
+        count <- count + 1
+    }    
+}    
+
+pval <- count/length(Tstats)
+pval
+
+```
+
+## WAIC Calculation
+
+```{r}
+
+library(loo)
+
+log_pd <- posterior$log_pd
+
+waic(log_pd)
+
+```
+
+## Forward Chaining Cross-Validation
+
+The problem with Cross-Validation in this setting is that we have a pretty small sample size.  Typically, a stint will be between 10 and 25 laps. For the 25 lap case above, the way I'd like to implement CV will be like so:
+
+fold 1: training [1-20], test [21]
+
+fold 2: training [1-21], test [22]
+
+fold 3: training [1-22], test [23]
+
+fold 4: training [1-23], test[24]
+
+fold 5: training [1-24], test [25]
+
+This seems like the best method out of those that I have come across for doing cross validation on a small sample size time series.
+
+I could also potentially decrease the initial training size (maybe 15 instead of 20).
+
+To estimate the one step ahead prediction, I have included code in the generated quantities block that will draw a predicted state and predicted observation for each posterior draw.
+
+Lastly, the summary statistic we'll use is the Squared Prediction Error:
+\[
+(y_{T+1} - \hat{y}_{T+1})^2
+\]
+
+where $\hat{y}_{T+1}$ is the mean of the y_pred generated quantities.
+
+
+```{r}
+
+# Number of folds
+K <- 5
+
+stan.models <- vector("list", length = K)
+posteriors <- vector("list", length = K)
+ypred_hat <- rep(NA, K)
+
+for(i in 1:K) {
+        
+  data_stan <- list(TT = length(y[1:(i+N-K-1)]), y = y[1:(i+N-K-1)], z0 = 96, v0 = .01, sdo0 = .3)
+  stan.models[[i]] <- stan(file = "Increasing_Slope_SSM_Parameterized.stan",
+                         data = data_stan,
+                         chains = 3, iter = 30000,
+                         control = list(adapt_delta = .99))
+  posteriors[[i]] <- extract(stan.models[[i]])
+  ypred_hat[i]  <- mean(posteriors[[i]]$y_pred)
+}    
+
+MSPE <- mean((y[(N-K+1):N] - ypred_hat)^2)
+RMSPE <- sqrt(MSPE)
+
+RMSPE
+
+plot(x = ypred_hat, y = y[(N-K+1):N],
+     xlab = "Predictions",
+     ylab = "True Observations")
+abline(0,1)
+
+```
+
+
+
+
+
+# Linearly Increasing Slope 2.0
+
+Lastly I'd just like to show what happens to the model when we make the observation error equal to the process error.
+
+```{r}
+
+
+# Number of states
+N <- 25
+
+# Beta
+beta <- .01
+
+# Initialize nu vector
+nu <- rep(NA, N)
+nu[1] <- .01
+
+# Initialize alpha vector
+alpha <- rep(NA, N)
+alpha[1] <- 96
+
+# Initialize process errors
+omega <- rnorm(n = N, mean = 0, sd = .1)
+
+# Store true latent states
+for(i in 2:(length(alpha))) {    
+    alpha[i] <- alpha[i-1] + nu[i-1] + omega[i]
+    nu[i] <- nu[i-1] + beta
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = N, mean = 0, sd = .1)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+The Increasing_Slope_SSM.stan file fits the above model.
+
+```{r}
+
+data_stan <- list(TT = length(y), y = y, z0 = 96, v0 = .01, sdo0 = .1)
+
+stan_test <- stan(file = "Increasing_Slope_SSM_Parameterized.stan",
+                  data = data_stan,
+                  chains = 3, iter = 30000,
+                  control = list(adapt_delta = .95))
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = N, by = 1)
+
+z_stan <- extract(stan_test, pars = c("z"))[[1]]
+z_CIl <- apply(z_stan, 2, quantile, probs=0.025)
+z_CIu <- apply(z_stan, 2, quantile, probs=0.975)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y,
+              z_CIl = z_CIl,
+              z_CIu = z_CIu)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+    geom_point() +
+    geom_ribbon(aes(ymin = z_CIl, ymax = z_CIu), fill = "black",color = "gray", alpha = .1)
+
+# Estimated Slope:
+mean(extract(stan_test, pars = c("v"))[[1]])
+
+# Estimated Observation Error:
+mean(extract(stan_test, pars = c("sdo"))[[1]])
+
+# Estimated Process Error
+mean(extract(stan_test, pars = c("sdp"))[[1]])
+
+calc_rMSE(alpha,states)
+calc_rMSE(alpha, y)
+
+```
+ 
+
+
+## Posterior Predictive Checks
+
+For the previous model, we will do a posterior predictive check with the test statistic:
+
+\[
+T(\mathbf{y},\theta) = \sum_{t=1}^T (y_t - \hat{y}_{t|1:T})^2
+\]
+
+where $\hat{y}_{t|1:T})^2$ is the state estimate for the model at time t.
+
+```{r}
+
+Tstat <- function(y) {
+    return(sum((y - df1$alphahat)^2))
+}    
+
+posterior <- extract(stan_test)
+yrep <- posterior$y_rep
+
+Tstats <- rep(NA,dim(yrep)[1])
+for(i in 1:dim(yrep)[1]) {
+    Tstats[i] <- Tstat(yrep[i,])
+}
+
+hist(Tstats)
+abline(v = Tstat(df1$observations), col = 'blue')
+
+Tobs <- Tstat(df1$observations)
+count <- 0
+for(i in 1:length(Tstats)) {
+    if(Tstats[i] > Tobs) {
+        count <- count + 1
+    }    
+}    
+
+pval <- count/length(Tstats)
+pval
+
+```
+
+
+It seems a bit concerning to me that I've specified the data generating process exactly in stan with very informative priors and yet our posterior predictive p-val is still very close to 1.
+
+
+

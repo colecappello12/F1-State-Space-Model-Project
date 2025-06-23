@@ -5,6 +5,8 @@
 - [ ] Multiple Stints/Full Race
 - [ ] Multiple drivers
 
+** TODO Dig a bit more into posterior predictive distributions for SSMs
+
 ** DONE Add Confidence intervals to GGplot
 CLOSED: [2025-06-11 Wed 20:45]
 
@@ -19,6 +21,9 @@ CLOSED: [2025-06-16 Mon 19:07]
 
 ** DONE Posterior Predictive Distribution  
 CLOSED: [2025-06-16 Mon 19:06]
+
+* Stan Notes
+- options(mc.cores = parallel::detectCores()) will let you run the chains in parellel
 
 * State Space Models
 ** Assumptions

@@ -1,0 +1,469 @@
+---
+title: "Full Race Simulation & Model for One Driver"
+author: "Cole Cappello"
+date: "06-20-2025"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+
+set.seed(123)
+
+knitr::opts_chunk$set(echo = TRUE)
+library(mosaic)
+library(tidyverse)
+library(effects)
+library(ggResidpanel)
+library(catstats2)
+library(Matrix)
+library(KFAS)
+library(rstan)
+library(loo)
+
+calc_rMSE <- function(alpha,estimate) {
+  n <- length(alpha)
+  rMSE <- 0
+  for(i in 1:n){
+    rMSE <- rMSE + (estimate[i] - alpha[i])^2
+  }
+  rMSE <- sqrt(rMSE/n)
+  return(rMSE)
+}
+
+options(mc.cores = parallel::detectCores())
+
+```
+
+
+
+```{r}
+
+canada_laps <- read_csv("imola_laps.csv")
+
+canada_laps <- canada_laps %>%
+    mutate(Stint = as.factor(Stint))
+
+filter(canada_laps, Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
+    ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
+    geom_point() +
+    geom_smooth() +
+    labs(title = "Tire Degration -- Charles Leclerc (Ferrari)",
+         x = "Tire Life",
+         y = "Lap Time (Seconds)")
+
+filter(canada_laps, Driver == "VER", is.na(PitOutTime) & is.na(PitInTime),LapTime < 90) %>%
+    ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
+    geom_point() +
+    geom_smooth() +
+    labs(title = "Tire Degration -- Max Verstappen (Red Bull)",
+         x = "Tire Life",
+         y = "Lap Time (Seconds)")
+
+filter(canada_laps, Driver == "PIA", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
+    ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
+    geom_point() +
+    geom_smooth() +
+    labs(title = "Tire Degration -- Oscar Piastri (McLaren)",
+         x = "Tire Life",
+         y = "Lap Time (Seconds)")
+
+filter(canada_laps, Driver == "RUS", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
+    ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
+    geom_point() +
+    geom_smooth() +
+    labs(title = "Tire Degration -- George Russell (Mercedes)",
+         x = "Tire Life",
+         y = "Lap Time (Seconds)")
+
+filter(canada_laps, Driver == "HAM", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100, Stint == 1) %>%
+    ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
+    geom_point() +
+    geom_smooth() +
+    labs(title = "Tire Degration -- Lewis Hamilton (Ferrari)",
+         x = "Tire Life",
+         y = "Lap Time (Seconds)")
+
+
+```
+
+In the next model we'll try implementing the degradation model for a whole race.  The main difference that we'll notice is that in every one of the plots above, we see a  decrease in the average lap time with each stint.  This is evidence of the cars getting faster as fuel load decreases. The next step after this will be to try to find ways to estimate the decrease in laptime across stints due to fuel usage.
+
+
+
+# Linearly Increasing Slope for the full Race
+
+The idea behind extending this model to a full race for a single drive is to allow intervention effects to account for pit stops for new tires. Specifically, we'll try to do this by creating a reset vector for the latent states that depends on compound, and a reset value for $\nu$.  The degradation rate $\beta$ now depends on the tire compound being used as well.
+
+\begin{align}
+	y_t &= \alpha_t + \epsilon_t \\
+	\alpha_{t+1} &= 
+	\begin{cases}
+		\alpha_t + \nu_t + \omega_t & pit_t = 0 \\ 
+		\alpha.reset[compound_t] & pit = 1
+	\end{cases} \\	
+	\nu_{t+1} &= 
+	\begin{cases}
+		\nu_t + \beta[compound_t] & pit_t = 0 \\
+		\nu.reset & pit = 1
+	\end{cases}	
+\end{align}
+
+where \( \epsilon_t \sim N(0,.4) \), \( \beta[Hard] = .01 \),$\beta[Medium] = .03$, $\beta[Soft] = .08$, $\nu_1 = \nu.reset = 0$, $\omega_t \sim N(0,.1)$, and $\alpha_1 = \alpha.reset[compound_{t=1}]$.  We'll let $\alpha.reset$ be 96, 95, and 94.5 for hard, medium, and soft tires resepectively. In this simulation, we will start on hard tires, pit on lap 30 for medium tires, then pit on lap 50 for soft tires. 
+
+```{r}
+
+
+# Number of states/laps
+N <- 60
+
+# Tire Compound index 1 - Hard, 2 - Medium, 3 - Soft
+compound <- c(rep(1,times = 30),rep(2, times = 20), rep(3, times = 10))
+
+# Pit Index indicates with a 1 if a new set of tires is put on the next lap
+pit <- rep(0, N)
+pit[30] <- 1
+pit[50] <- 1
+
+# Beta is now a vector with the index representing degredation increase for each compound
+beta <- rep(0,3)
+beta[1] <- .01
+beta[2] <- .03
+beta[3] <- .08
+
+# Reset vector stores the true pace of a new tire compound
+reset.alpha <- rep(0,3)
+reset.alpha[1] <- 96
+reset.alpha[2] <- 95
+reset.alpha[3] <- 94.5
+
+# Reset value for nu
+reset.nu <- 0
+    
+# Initialize nu vector
+nu <- rep(NA, N)
+nu[1] <- reset.nu
+
+# Initialize alpha vector
+alpha <- rep(NA, N)
+alpha[1] <- reset.alpha[1]
+
+# Initialize process errors
+omega <- rnorm(n = N, mean = 0, sd = .1)
+
+# Store true latent states
+for(i in 2:(length(alpha))) {
+    if(pit[i-1] == 1) {
+        alpha[i] <- reset.alpha[compound[i]] + omega[i]
+        nu[i] <- reset.nu
+    } else {
+    alpha[i] <- alpha[i-1] + nu[i-1] + omega[i]
+    nu[i] <- nu[i-1] + beta[compound[i-1]]
+    }
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = N, mean = 0, sd = .4)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+The full_racce_1driver.stan file fits the above model.
+
+```{r}
+
+data_stan <- list(TT = length(y), y = y, C = 3, Compound = compound, Pit = pit, z_reset0 = c(96,95,94.5), v_reset0 = 0, sdo0 = .4)
+
+stan_test <- stan(file = "full_race_1driver.stan",
+                  data = data_stan,
+                  chains = 3, iter = 30000,
+                  control = list(adapt_delta = .99))
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = N, by = 1)
+
+z_stan <- extract(stan_test, pars = c("z"))[[1]]
+z_CIl <- apply(z_stan, 2, quantile, probs=0.025)
+z_CIu <- apply(z_stan, 2, quantile, probs=0.975)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y,
+              z_CIl = z_CIl,
+              z_CIu = z_CIu)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+    geom_point() +
+    geom_ribbon(aes(ymin = z_CIl, ymax = z_CIu), fill = "black",color = "gray", alpha = .1)
+
+
+# Estimated Observation Error:
+mean(extract(stan_test, pars = c("sdo"))[[1]])
+
+# Estimated Process Error
+mean(extract(stan_test, pars = c("sdp"))[[1]])
+
+calc_rMSE(alpha,states)
+calc_rMSE(alpha, y)
+
+```
+ 
+## Posterior Predictive Checks
+
+For the previous model, we will do a posterior predictive check with the test statistic:
+
+\[
+T(\mathbf{y},\theta) = \sum_{t=1}^T (y_t - \hat{y}_{t|1:T})^2
+\]
+
+where $\hat{y}_{t|1:T})$ is the state estimate for the model at time t.
+
+```{r}
+
+Tstat <- function(y) {
+    return(sum((y - df1$alphahat)^2))
+}    
+
+posterior <- extract(stan_test)
+yrep <- posterior$y_rep
+
+Tstats <- rep(NA,dim(yrep)[1])
+for(i in 1:dim(yrep)[1]) {
+    Tstats[i] <- Tstat(yrep[i,])
+}
+
+hist(Tstats)
+abline(v = Tstat(df1$observations), col = 'blue')
+
+Tobs <- Tstat(df1$observations)
+count <- 0
+for(i in 1:length(Tstats)) {
+    if(Tstats[i] > Tobs) {
+        count <- count + 1
+    }    
+}    
+
+pval <- count/length(Tstats)
+pval
+
+```
+
+## WAIC Calculation
+
+```{r}
+
+library(loo)
+
+log_pd <- posterior$log_pd
+
+waic(log_pd)
+
+```
+
+Overall the estimates look decent, but the posterior predictive check doesn't look great unfortunately. If I bump up the observation error it gets better.
+
+In this previous example, the average lap time decreases across stints because we have set the reset time for softs to be less than mediums, and mediums less than hards.  This makes sense based on knowledge of the tire compounds.  However, in actual race data we see that the average laptime decreases across stints regardless of the compound used.  This is due to fuel loss during the course of the race.
+
+
+
+# Lap time Decrease due to Fuel Loss
+
+We'll create a fuel.kg vector which starts at 110 (this is the max amount of fuel allowed by regulation) and decreases linearly to 0 at the end of the race. We are going to use a similar model to the above but add a covariate to the observation equation for fuel. In order to estimate gamma correctly, it will be critical to set a proper prior for the initial latent $\alpha_1 = \alpha.reset[compound_{t=1}]$. Ultimately, it needs to be roughly 1-1.5 seconds less than the initial observation $y_1$, but in the stan code we'll set the prior to be centered on the true value of 95.
+
+\begin{align}
+	y_t &= \alpha_t + \gamma*fuel.kg_t +\epsilon_t \\
+	\alpha_{t+1} &= 
+	\begin{cases}
+		\alpha_t + \nu_t + \omega_t & pit_t = 0 \\ 
+		\alpha.reset[compound_t] & pit = 1
+	\end{cases} \\	
+	\nu_{t+1} &= 
+	\begin{cases}
+		\nu_t + \beta[compound_t] & pit_t = 0 \\
+		\nu.reset & pit = 1
+	\end{cases}	
+\end{align}
+
+where \( \epsilon_t \sim N(0,.2) \), \( \beta[Hard] = .002 \), $\beta[Medium] = .01$, $\beta[Soft] = .02$, $\nu_1 = \nu.reset = 0$, $\omega_t \sim N(0,.15)$, and $\alpha_1 = \alpha.reset[compound_{t=1}]$.  We'll let $\alpha.reset$ be 95, 94.5, and 94 for hard, medium, and soft tires resepectively. In this simulation, we will start on hard tires, pit on lap 30 for soft tires, then pit on lap 40 for medium tires. 
+
+
+
+
+```{r}
+
+
+# Number of states/laps
+N <- 60
+
+# Tire Compound index 1 - Hard, 2 - Medium, 3 - Soft
+compound <- c(rep(1,times = 30), rep(3, times = 10),rep(2, times = 20))
+
+# Fuel Mass in kg
+fuel.kg <- seq(from = 110, to = 0, length.out = N)
+
+# Gamma 
+gamma <- .01
+
+
+# Pit Index indicates with a 1 if a new set of tires is put on the next lap
+pit <- rep(0, N)
+pit[30] <- 1
+pit[40] <- 1
+
+# Beta is now a vector with the index representing each compound
+beta <- rep(0,3)
+beta[1] <- .002
+beta[2] <- .01
+beta[3] <- .02
+
+# Reset vector stores the true pace of a new tire for each compound
+reset.alpha <- rep(0,3)
+reset.alpha[1] <- 95
+reset.alpha[2] <- 94.5
+reset.alpha[3] <- 94
+
+# Reset value for nu
+reset.nu <- 0
+    
+# Initialize nu vector
+nu <- rep(NA, N)
+nu[1] <- .01
+
+# Initialize alpha vector
+alpha <- rep(NA, N)
+alpha[1] <- reset.alpha[1]
+
+# Initialize process errors
+omega <- rnorm(n = N, mean = 0, sd = .15)
+
+# Store true latent states
+for(i in 2:(length(alpha))) {
+    if(pit[i-1] == 1) {
+        alpha[i] <- reset.alpha[compound[i]] + omega[i]
+        nu[i] <- reset.nu
+    } else {
+    alpha[i] <- alpha[i-1] + nu[i-1] + omega[i]
+    nu[i] <- nu[i-1] + beta[compound[i-1]]
+    }
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = N, mean = 0, sd = .2)
+
+# Simulated observations
+y <- alpha + fuel.kg*gamma + epsilon
+
+```
+
+
+full_race_1driver_and_fuel.stan contains code to fit the model
+
+
+```{r}
+
+data_stan <- list(TT = length(y), y = y, C = 3, Compound = compound, Pit = pit, z_reset0 = c(95,94.5,94), v_reset0 = 0, sdo0 = .2, fuel_mass = fuel.kg)
+
+stan_test <- stan(file = "full_race_1driver_and_fuel.stan",
+                  data = data_stan,
+                  chains = 3, iter = 30000,
+                  control = list(adapt_delta = .99,max_treedepth = 12))
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = N, by = 1)
+
+z_stan <- extract(stan_test, pars = c("z"))[[1]]
+z_CIl <- apply(z_stan, 2, quantile, probs=0.025)
+z_CIu <- apply(z_stan, 2, quantile, probs=0.975)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y,
+              z_CIl = z_CIl,
+              z_CIu = z_CIu)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+    geom_point() 
+    geom_ribbon(aes(ymin = z_CIl, ymax = z_CIu), fill = "black",color = "gray", alpha = .1)
+
+
+# Estimated Observation Error:
+mean(extract(stan_test, pars = c("sdo"))[[1]])
+
+# Estimated Process Error
+mean(extract(stan_test, pars = c("sdp"))[[1]])
+
+calc_rMSE(alpha,states)
+calc_rMSE(alpha, y)
+
+```
+ 
+
+This looks pretty good! It seems similar to the pattern observed in the laptime data and we are able to infer back to the true states pretty well even when the observation error is close to the process error.
+
+One of the things I like about this as well is that the laptime observations can look somewhat random, or like there isn't much degradation.  Take the first stint for example, the observation times remain relatively stable.  However, the underlying degradation process still continues and we are able to infer back to it pretty well.
+
+## Posterior Predictive Checks
+
+eFor the previous model, we will do a posterior predictive check with the test statistic:
+
+\[
+T(\mathbf{y},\theta) = \sum_{t=1}^T (y_t - \hat{y}_{t|1:T})^2
+\]
+
+where $\hat{y}_{t|1:T})$ is the state estimate for the model at time t.
+
+```{r}
+
+Tstat <- function(y) {
+    return(sum((y - df1$alphahat)^2))
+}    
+
+posterior <- extract(stan_test)
+yrep <- posterior$y_rep
+
+Tstats <- rep(NA,dim(yrep)[1])
+for(i in 1:dim(yrep)[1]) {
+    Tstats[i] <- Tstat(yrep[i,])
+}
+
+hist(Tstats)
+abline(v = Tstat(df1$observations), col = 'blue')
+
+Tobs <- Tstat(df1$observations)
+count <- 0
+for(i in 1:length(Tstats)) {
+    if(Tstats[i] > Tobs) {
+        count <- count + 1
+    }    
+}    
+
+pval <- count/length(Tstats)
+pval
+
+```

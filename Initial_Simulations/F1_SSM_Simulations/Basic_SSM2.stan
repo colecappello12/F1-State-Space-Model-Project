@@ -20,8 +20,8 @@ parameters {
 /* Model block: defines the model */
 model {
   
-  sdo ~ normal(0,3);
-  sdp ~ normal(0,3);
+  sdo ~ normal(.3,.1);
+  sdp ~ normal(.1,.1);
   // Could include a prior for the slope v
   // v ~ normal(1,1);
   
@@ -33,4 +33,13 @@ model {
   for(t in 1:TT){
     y[t] ~ normal(z[t], sdo);
   }
+}
+
+generated quantities {
+
+  real z_pred;
+  real y_pred;
+  z_pred = normal_rng(z[TT] + v, sdp);
+  y_pred = normal_rng(z_pred, sdo);
+
 }

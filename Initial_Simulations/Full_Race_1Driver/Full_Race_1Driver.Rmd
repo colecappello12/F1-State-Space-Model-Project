@@ -39,12 +39,12 @@ options(mc.cores = parallel::detectCores())
 
 ```{r}
 
-canada_laps <- read_csv("canada_laps.csv")
+Austria_laps <- read_csv("Austria_laps.csv")
 
-canada_laps <- canada_laps %>%
+Austria_laps <- Austria_laps %>%
     mutate(Stint = as.factor(Stint))
 
-filter(canada_laps, Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
+filter(Austria_laps, Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
     ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
     geom_point() +
     geom_smooth() +
@@ -52,7 +52,7 @@ filter(canada_laps, Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime),LapTim
          x = "Tire Life",
          y = "Lap Time (Seconds)")
 
-filter(canada_laps, Driver == "VER", is.na(PitOutTime) & is.na(PitInTime),LapTime < 90) %>%
+filter(Austria_laps, Driver == "VER", is.na(PitOutTime) & is.na(PitInTime),LapTime < 90) %>%
     ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
     geom_point() +
     geom_smooth() +
@@ -60,7 +60,7 @@ filter(canada_laps, Driver == "VER", is.na(PitOutTime) & is.na(PitInTime),LapTim
          x = "Tire Life",
          y = "Lap Time (Seconds)")
 
-filter(canada_laps, Driver == "PIA", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
+filter(Austria_laps, Driver == "PIA", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
     ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
     geom_point() +
     geom_smooth() +
@@ -68,7 +68,7 @@ filter(canada_laps, Driver == "PIA", is.na(PitOutTime) & is.na(PitInTime),LapTim
          x = "Tire Life",
          y = "Lap Time (Seconds)")
 
-filter(canada_laps, Driver == "RUS", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
+filter(Austria_laps, Driver == "RUS", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
     ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
     geom_point() +
     geom_smooth() +
@@ -76,7 +76,7 @@ filter(canada_laps, Driver == "RUS", is.na(PitOutTime) & is.na(PitInTime),LapTim
          x = "Tire Life",
          y = "Lap Time (Seconds)")
 
-filter(canada_laps, Driver == "HAM", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
+filter(Austria_laps, Driver == "HAM", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
     ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Compound)) +
     geom_point() +
     geom_smooth() +
@@ -304,7 +304,6 @@ where \( \epsilon_t \sim N(0,.2) \), \( \beta[Hard] = .002 \), $\beta[Medium] = 
 
 
 ```{r}
-
 
 # Number of states/laps
 N <- 60

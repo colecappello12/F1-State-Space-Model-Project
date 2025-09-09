@@ -25,11 +25,21 @@ transformed parameters {
 /* Model block: defines the model */
 model {
   
-  sdo ~ normal(0,1);
-  z1 ~ normal(z0, 5);
+  sdo ~ normal(0.3,.1);
+  z1 ~ normal(z0, .5);
   
   y[1] ~ normal(z1, sdo);
   for(t in 1:TT-1){
     y[t+1] ~ normal(z[t], sdo);
   }
+}
+
+generated quantities {
+
+  // One-step-ahead prediction
+  real z_pred;
+  real y_pred;
+  z_pred = z[TT-1] + v;
+  y_pred = normal_rng(z_pred, sdo);	 
+
 }

@@ -1,30 +1,36 @@
 * Next Steps
+** TODO Add pit stop time increase to the model.
+  
+** DONE Implement Cross Validation for Model Selection
+CLOSED: [2025-09-07 Sun 19:57] DEADLINE: <2025-09-07 Sun>
+- [X] Cross Validation Simulation Study for single stint
+  - Simulate under models of different complexity
+  - Compare cross validation results of the different models
 
-** TODO F1 Specific Simulations [1/3]
-- [X] Over a single stint
-- [ ] Multiple Stints/Full Race
-- [ ] Multiple drivers
+** TODO Posterior Predictive Checks for PMCMC 
+DEADLINE: <2025-09-13 Sat>
 
-** TODO Dig a bit more into posterior predictive distributions for SSMs
+** TODO Still fit on synthetic data
+- mimic real data
+- stress priors
+  
+** TODO Develop a framework for comparing deg rates across drivers/teams 
 
-** DONE Add Confidence intervals to GGplot
-CLOSED: [2025-06-11 Wed 20:45]
+** TODO Send Andy what I have so far for the writing project
+  
+** TODO Email Erin Schliep
+- Ask a specific question about research
+- Mention you are thinking about applying and if there's any pros and cons of program
 
-** DONE Read more sections of the SSM review [4/4]
-CLOSED: [2025-06-16 Mon 19:07]
-- [X] Prior selection/Predictive checks`
-- [X] Formulating an Appropriate SSM for your Data
-- [X] Diagnostics and Model Validation
-  - Posterior Predictive Checks
-  - One-Step Ahead Residuals
-- [X] Cross-Validation
+** TODO Email Mike about fire research grant
+- if there are any ideas that would be better
 
-** DONE Posterior Predictive Distribution  
-CLOSED: [2025-06-16 Mon 19:06]
+** TODO 12 - 1:30 Thursdays Reading Group
 
 * Stan Notes
 - options(mc.cores = parallel::detectCores()) will let you run the chains in parellel
-
+* Nimble Notes
+- Good [[https://www.jstatsoft.org/article/view/v100i03][paper]] on SMC algorithms used in nimble
 * State Space Models
 ** Assumptions
 - SSMs assume the state process is a markov proces (state at time t depends only on state t-1)
@@ -81,41 +87,34 @@ To compute the [[https://stats.stackexchange.com/questions/476838/one-step-ahead
 - The other thing we can do is calculate WAIC by the calculation in Gelman
   
 * Data Cleaning Considerations
-
-** Pit Laps
-
-** Laps in which the driver is close to a car in front
-
-** First Two or three laps of each stint
-- Should be gotten rid of most likely since the driver will be bringing the tires into the "temperature window"
-  
-** Fuel corrected laptimes
-- Will potentially want to adjust the laptimes by .03 seconds a lap for loss of fuel
-- Could ask about the possibility of estimating this quantity
-
 * Backlog/Ideas for later
 
-** Need to find a way to incorporate other drivers/constructors and tire type in the model
-- Right now the model only works for a single driver
-  - Might be able to add covariates for the driver
-  
+** TODO Look into ways to incorporate distance to driver ahead to the model
+- Do multivarate time series with other drivers' laptimes involved
+- Define a correlation matrix for the errrors that depends on distance
 ** Perhaps a way to incorporate telemetry data
 - Need to learn about ODEs most likely
-
-** What really is \alpha in the model?
-- Is it the true pace or average pace of the driver
-
-** Could we consider the season as a time series and find covariates that help predict tire degredation differences from grand prix to grand prix?  
-
-** How to choose optimal starting values for Bayesian implementation
-
+** TODO F1 Specific Simulations [2/3]
+- [X] Over a single stint
+- [X] Multiple Stints/Full Race
+- [ ] Multiple drivers
 * Misc Questions
+** Mathjobs.org
+universityof florida stat jobs
 
-** Thinking about applying to phd programs
-- Could Measure Theory be a good course to take next semester in the math department ?
-- If not, could I also take mathematical optimization ?
+** Locally
+- Atrium
+- Bozeman Health
+- Zoot
+- Morkeva
+- Onyx (mapping)
 
 * Completed
+** DONE Look at SMC
+CLOSED: [2025-07-08 Tue 16:00]
+- Andy will send paper
+- Mathematics of updates
+  
 ** DONE Initial Simulations [3/3]
 CLOSED: [2025-06-11 Wed 10:20]
 - [X] Simulate Data from basic versions of model
@@ -125,3 +124,97 @@ CLOSED: [2025-06-11 Wed 10:20]
 ** DONE Set up a GitHub Repo
 CLOSED: [2025-06-11 Wed 10:19]
 
+** DONE Posterior Predictive Distribution  
+CLOSED: [2025-06-16 Mon 19:06]
+
+** DONE Add Confidence intervals to GGplot
+CLOSED: [2025-06-11 Wed 20:45]
+
+** DONE Fit PMCMC on basic models
+CLOSED: [2025-07-15 Tue 17:10]
+
+** DONE Read more sections of the SSM review [4/4]
+CLOSED: [2025-06-16 Mon 19:07]
+- [X] Prior selection/Predictive checks`
+- [X] Formulating an Appropriate SSM for your Data
+- [X] Diagnostics and Model Validation
+  - Posterior Predictive Checks
+  - One-Step Ahead Residuals
+- [X] Cross-Validation
+** DONE Rough Draft of Intro
+CLOSED: [2025-08-24 Sun 13:17]
+- Background to racing
+- What are people doing currently?
+- How is this work necessary
+- Anatomy of introduction:
+  - F1 and tire deg background
+  - What questions are we going to try to answer
+  - What work have people done?
+    - Start off by saying that to the best of our knowledge, there are no other examples in the literature applying State Space models to tire degredation.
+    - Mention the one paper that does something similar and argue that our approach is more explainable and generalizeable
+    - 
+  - What is different about what we're gonna do/why is it advantageous
+  - Talk about paper structure where are we going
+** DONE Implement PMCMC for the full model
+CLOSED: [2025-09-02 Tue 08:43] DEADLINE: <2025-09-02 Tue>
+** DONE Make a Schedule/Timeline of when this should be finished
+CLOSED: [2025-09-02 Tue 15:56]
+
+** DONE Advising form
+CLOSED: [2025-09-03 Wed 12:01] DEADLINE: <2025-09-04 Thu>
+** DONE Write custom sampler/PMCMC that tracks one step ahead predictions
+CLOSED: [2025-09-03 Wed 19:25] DEADLINE: <2025-09-02 Tue>
+- We don't need to do anything fancy.  mvWSamples has the weights and samples **before** weighting. So we can just sample from p(y_t|x_t)
+
+** DONE Initial fits on real data [2/2]
+CLOSED: [2025-08-19 Tue 13:31]
+- [X] Stan is throwing warnings because there is no data for some tire types.  Find a way to deal with this
+  - Added code so that stan only looks at used tire types
+- [X] For some of the more weird deg trajectories, we were getting negative estimates for b.  We can set a lower bound on this or play around with different priors.
+  - Set a lower bound
+* Project Timeline  
+** Meetings
+*** Meet w/ Andy
+<2025-09-04 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-09-11 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-09-18 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-09-25 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-10-02 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-10-09 Thu 12:15-12:45>
+- Ask about Los Alamos National Lab Research Positions
+*** Meet w/ Andy
+<2025-10-16 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-10-23 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-10-30 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-11-06 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-11-13 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-11-20 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-11-27 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-12-04 Thu 12:15-12:45>
+*** Meet w/ Andy
+<2025-12-11 Thu 12:15-12:45>
+** Project Timeline
+*** DONE Introduction Rough Draft
+CLOSED: [2025-08-24 Sun 13:18] DEADLINE: <2025-08-28 Thu>
+*** DONE Data Preprocessing Rough Draft
+CLOSED: [2025-09-06 Sat 14:48] DEADLINE: <2025-09-07 Sun>
+*** TODO Chapter 3 Model Specs Rough Draft
+DEADLINE: <2025-09-25 Thu>
+*** TODO Chapter 4 Results Rough Draft
+DEADLINE: <2025-10-09 Thu>
+*** TODO Chapter 5 Discussion/Conclusion Rough Draft
+DEADLINE: <2025-10-16 Thu>
+*** TODO Preprint Finished
+DEADLINE: <2025-11-24 Mon>

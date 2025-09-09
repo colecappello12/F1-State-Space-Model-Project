@@ -8,7 +8,7 @@ output: pdf_document
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(message = FALSE)
 
-set.seed(123)
+set.seed(126)
 
 knitr::opts_chunk$set(echo = TRUE)
 library(mosaic)
@@ -39,12 +39,12 @@ options(mc.cores = parallel::detectCores())
 
 ```{r}
 
-canada_laps <- read_csv("imola_laps.csv")
+Austria_laps <- read_csv("Austria_laps.csv")
 
-canada_laps <- canada_laps %>%
+Austria_laps <- Austria_laps %>%
     mutate(Stint = as.factor(Stint))
 
-filter(canada_laps, Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
+filter(Austria_laps, Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
     ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
     geom_point() +
     geom_smooth() +
@@ -52,7 +52,7 @@ filter(canada_laps, Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime),LapTim
          x = "Tire Life",
          y = "Lap Time (Seconds)")
 
-filter(canada_laps, Driver == "VER", is.na(PitOutTime) & is.na(PitInTime),LapTime < 90) %>%
+filter(Austria_laps, Driver == "VER", is.na(PitOutTime) & is.na(PitInTime),LapTime < 90) %>%
     ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
     geom_point() +
     geom_smooth() +
@@ -60,7 +60,7 @@ filter(canada_laps, Driver == "VER", is.na(PitOutTime) & is.na(PitInTime),LapTim
          x = "Tire Life",
          y = "Lap Time (Seconds)")
 
-filter(canada_laps, Driver == "PIA", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
+filter(Austria_laps, Driver == "PIA", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
     ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
     geom_point() +
     geom_smooth() +
@@ -68,7 +68,7 @@ filter(canada_laps, Driver == "PIA", is.na(PitOutTime) & is.na(PitInTime),LapTim
          x = "Tire Life",
          y = "Lap Time (Seconds)")
 
-filter(canada_laps, Driver == "RUS", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
+filter(Austria_laps, Driver == "RUS", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
     ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
     geom_point() +
     geom_smooth() +
@@ -76,8 +76,8 @@ filter(canada_laps, Driver == "RUS", is.na(PitOutTime) & is.na(PitInTime),LapTim
          x = "Tire Life",
          y = "Lap Time (Seconds)")
 
-filter(canada_laps, Driver == "HAM", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100, Stint == 1) %>%
-    ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
+filter(Austria_laps, Driver == "HAM", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
+    ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Compound)) +
     geom_point() +
     geom_smooth() +
     labs(title = "Tire Degration -- Lewis Hamilton (Ferrari)",
@@ -305,7 +305,6 @@ where \( \epsilon_t \sim N(0,.2) \), \( \beta[Hard] = .002 \), $\beta[Medium] = 
 
 ```{r}
 
-
 # Number of states/laps
 N <- 60
 
@@ -348,7 +347,7 @@ alpha <- rep(NA, N)
 alpha[1] <- reset.alpha[1]
 
 # Initialize process errors
-omega <- rnorm(n = N, mean = 0, sd = .15)
+omega <- rnorm(n = N, mean = 0, sd = .1)
 
 # Store true latent states
 for(i in 2:(length(alpha))) {
@@ -408,7 +407,7 @@ df_long <- df1 %>%
   pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
 
 ggplot(df_long, aes(x = time, y = value, color = type)) +
-    geom_point() 
+    geom_point() +
     geom_ribbon(aes(ymin = z_CIl, ymax = z_CIu), fill = "black",color = "gray", alpha = .1)
 
 
@@ -467,3 +466,6 @@ pval <- count/length(Tstats)
 pval
 
 ```
+
+ 
+Here the posterior predictive checks are pretty good too.

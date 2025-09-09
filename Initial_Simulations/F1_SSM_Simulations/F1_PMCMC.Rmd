@@ -1,0 +1,575 @@
+---
+title: "Initial Attempts at PMCMC"
+author: "Cole Cappello"
+date: "07=04-2025"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(message = FALSE)
+
+set.seed(123)
+
+knitr::opts_chunk$set(echo = TRUE)
+library(mosaic)
+library(tidyverse)
+library(effects)
+library(ggResidpanel)
+library(catstats2)
+library(Matrix)
+library(KFAS)
+library(rstan)
+
+calc_rMSE <- function(alpha,estimate) {
+  n <- length(alpha)
+  rMSE <- 0
+  for(i in 1:n){
+    rMSE <- rMSE + (estimate[i] - alpha[i])^2
+  }
+  rMSE <- sqrt(rMSE/n)
+  return(rMSE)
+}
+
+```
+
+# Linearly Increasing Slope
+
+What if we just let the slope increase linearly with each step to capture some of that increasing decay rate behavior?
+
+Here we'll simulate from the model
+
+\begin{align}
+	y_t &= \alpha_t + \epsilon_t \\
+	\alpha_{t+1} &= \alpha_t + \nu_t + \omega_t \\ 
+	\nu_{t+1} &= \nu_t + \beta
+\end{align}
+
+where \( \epsilon_t \sim N(0,.3) \), \( \beta = .01 \), $\nu_1 = .01$, $\omega_t \sim N(0,.1)$, and $\alpha_1 = 96$.
+
+```{r}
+
+
+# Number of states
+N <- 25
+
+# Beta
+beta <- .01
+
+# Initialize nu vector
+nu <- rep(NA, N)
+nu[1] <- .01
+
+# Initialize alpha vector
+alpha <- rep(NA, N)
+alpha[1] <- 96
+
+# Initialize process errors
+omega <- rnorm(n = N, mean = 0, sd = .1)
+
+# Store true latent states
+for(i in 2:(length(alpha))) {    
+    alpha[i] <- alpha[i-1] + nu[i-1] + omega[i]
+    nu[i] <- nu[i-1] + beta
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = N, mean = 0, sd = .3)
+
+# Simulated observations
+y <- alpha + epsilon
+
+```
+
+The Increasing_Slope_SSM.stan file fits the above model.  Increasing_Slope_SSM_Parameterized.stan fits a parameterized version of the model to try to help with divergences.
+
+```{r}
+
+data_stan <- list(TT = length(y), y = y, z0 = 96, v0 = .01, sdo0 = .3)
+
+stan_test <- stan(file = "Increasing_Slope_SSM_Parameterized.stan",
+                  data = data_stan,
+                  chains = 3, iter = 30000,
+                  control = list(adapt_delta = .99))
+
+states <- colMeans(extract(stan_test, pars = c("z"))[[1]])
+
+plot(x = states, y = alpha, 
+     xlab = "Estimated States",
+     ylab = "True States")
+abline(0,1)
+
+# Include a plot of time vs. estimated state, true state, and observations
+time <- seq(from = 1, to = N, by = 1)
+
+z_stan <- extract(stan_test, pars = c("z"))[[1]]
+z_CIl <- apply(z_stan, 2, quantile, probs=0.025)
+z_CIu <- apply(z_stan, 2, quantile, probs=0.975)
+
+df1 <- tibble(time = time,
+              alpha = alpha,
+              alphahat = states,
+              observations = y,
+              z_CIl = z_CIl,
+              z_CIu = z_CIu)
+
+
+df_long <- df1 %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long, aes(x = time, y = value, color = type)) +
+    geom_point() +
+    geom_ribbon(aes(ymin = z_CIl, ymax = z_CIu), fill = "black",color = "gray", alpha = .1)
+
+
+# Estimated Observation Error:
+mean(extract(stan_test, pars = c("sdo"))[[1]])
+
+# Estimated Process Error
+mean(extract(stan_test, pars = c("sdp"))[[1]])
+
+calc_rMSE(alpha,states)
+calc_rMSE(alpha, y)
+
+```
+
+
+
+# PMCMC
+
+```{r}
+
+library(nimble)
+library(nimbleSMC)
+
+code <- nimbleCode({
+    # priors
+    sdo ~ dnorm(sdo0, .1)
+    sdp ~ dnorm(sdp0, .1)
+    b ~ dnorm(0,.1)
+
+    # Model
+    v[1] ~ dnorm(v0,.1)
+
+    for(t in 2:TT){
+        v[t] <- v[t-1] + b
+    }   
+    
+    z[1] ~ dnorm(z0,.1)
+
+    for(t in 2:TT){
+        z[t] ~ dnorm(z[t-1] + v[t-1],sdp)
+    }    
+
+    for(t in 1:TT){
+        y[t] ~ dnorm(z[t],sdo)
+    }    
+})    
+
+constants <- list(TT = 25,
+                  sdo0 = .3,
+                  sdp0 = .1,
+                  v0 = 0,
+                  z0 = 96)
+
+data <- list(y = y)
+
+inits <- list(sdo = .3,
+              sdp = .1,
+              b = 0,
+              v = rep(0,N),
+              z = rep(96,N))
+
+deg.model <- nimbleModel(code = code,constants = constants, data = data,inits = inits)
+
+compileNimble(deg.model)
+
+deg.conf <- configureMCMC(deg.model, nodes = NULL,print = TRUE)
+
+deg.conf$addSampler(target = c('sdo','sdp','b',"v[1]"),
+                    type = "RW_PF_block",
+                    control = list(latents = 'z',
+                                   pfType = "bootstrap",
+                                   pfNparticles = 2000))
+
+deg.MCMC <- buildMCMC(deg.conf)
+
+deg.comp <- compileNimble(deg.MCMC)
+
+#deg.out <- nimbleMCMC(model = deg.comp, nchains = 2,
+#                      summary = TRUE, monitors = TRUE
+
+samples <- runMCMC(deg.comp, niter = 10000, nburnin = 1000, nchains = 2,summary = TRUE)
+
+# Get the full summary table
+summary_df <- as.data.frame(samples$summary$all.chains)
+
+# Pull out just the z states by name
+z_summary <- summary_df[grep("^z\\[", rownames(summary_df)), ]
+
+alphahat <- z_summary[,1]
+
+df <- tibble(time = seq(1,N,1),
+             alphahat = alphahat,
+             alpha = alpha,
+             observations = y)
+
+df_long1 <- df %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long1, aes(x = time, y = value, color = type)) +
+    geom_point() 
+#    geom_ribbon(aes(ymin = z_CIl, ymax = z_CIu), fill = "black",color = "gray", alpha = .1)
+
+calc_rMSE(alpha,alphahat)
+
+
+```
+
+
+
+
+```{r}
+
+library(nimble)
+library(nimbleSMC)
+
+code <- nimbleCode({
+    # priors
+    sdo ~ dnorm(.3, 10)
+    sdp ~ dnorm(.1, 10)
+
+    b ~ dnorm(0,.1)
+
+
+    z[1] ~ dnorm(z0,.1)
+
+    for(t in 2:TT){
+        z[t] ~ dnorm(z[t-1] + b,sdp)
+    }    
+
+    for(t in 1:TT){
+        y[t] ~ dnorm(z[t],sdo)
+    }    
+})    
+
+constants <- list(TT = 25,
+#                  sdo0 = .3,
+#                  sdp0 = .1,
+#                  v0 = 0,
+                  z0 = 96)
+
+data <- list(y = y)
+
+inits <- list(sdo = .3,
+              sdp = .1,
+              b = 0,
+              z = rep(96,N))
+
+deg.model <- nimbleModel(code = code,constants = constants, data = data,inits = inits)
+
+compileNimble(deg.model)
+
+deg.conf <- configureMCMC(deg.model,print = TRUE)
+
+deg.conf$addSampler(target = c('sdo','sdp','b'),
+                    type = "RW_PF_block",
+                    control = list(latents = 'z',
+                                   pfType = "bootstrap",
+                                   pfNparticles = 1000))
+
+deg.MCMC <- buildMCMC(deg.conf)
+
+deg.comp <- compileNimble(deg.MCMC)
+
+#deg.out <- nimbleMCMC(model = deg.comp, nchains = 2,
+#                      summary = TRUE, monitors = TRUE
+
+samples <- runMCMC(deg.comp, niter = 10000, nburnin = 1000, nchains = 2,summary = TRUE)
+
+# Get the full summary table
+summary_df <- as.data.frame(samples$summary$all.chains)
+
+# Pull out just the z states by name
+z_summary <- summary_df[grep("^z\\[", rownames(summary_df)), ]
+
+alphahat <- z_summary[,1]
+
+df <- tibble(time = seq(1,N,1),
+             alphahat = alphahat,
+             alpha = alpha,
+             observations = y)
+
+df_long1 <- df %>%
+  pivot_longer(cols = c(alpha, alphahat,observations), names_to = "type", values_to = "value")
+
+ggplot(df_long1, aes(x = time, y = value, color = type)) +
+    geom_point() 
+#    geom_ribbon(aes(ymin = z_CIl, ymax = z_CIu), fill = "black",color = "gray", alpha = .1)
+
+calc_rMSE(alpha,alphahat)
+
+
+```
+
+# SMC Run treating parameters as fixed
+
+```{r}
+
+
+
+#SMCfunction <- function(parSdo, parSdp, parB) {
+
+parSdo <- .3
+parSdp <- .1
+parB <- .01
+
+    code <- nimbleCode({
+
+        z[1] ~ dnorm(z0,5)
+
+        for(t in 2:TT){
+            z[t] ~ dnorm(z[t-1] + b,sdp)
+        }    
+
+        for(t in 1:TT){
+            y[t] ~ dnorm(z[t],sdo)
+        }    
+    })    
+
+    constants <- list(TT = 25,
+                      sdo = parSdo,
+                      sdp = parSdp,
+                      b = parB,
+                      z0 = 96)
+
+    data <- list(y = y)
+
+    inits <- list(z = rep(96,N))
+
+    SMC.model <- nimbleModel(code = code,constants = constants, data = data,inits = inits)
+
+    cSMC.model <- compileNimble(SMC.model)
+
+    bootFilter <- buildBootstrapFilter(model = SMC.model, nodes = "z", control = list(saveAll = TRUE))
+
+    cBootFilter <- compileNimble(bootFilter, project = cSMC.model)
+
+    cBootFilter$run(m = 1000)
+
+    head(as.matrix(cBootFilter$mvEWSamples))
+
+#}    
+
+    
+    #----------------------------------------------------------------------#
+    
+    deg.conf <- configureMCMC(deg.model,print = TRUE)
+
+    deg.conf$addSampler(target = c('sdo','sdp','b'),
+                        type = "RW_PF_block",
+                        control = list(latents = 'z',
+                                       pfType = "bootstrap",
+                                       pfNparticles = 1000))
+
+    deg.MCMC <- buildMCMC(deg.conf)
+
+    deg.comp <- compileNimble(deg.MCMC)
+
+                                        #deg.out <- nimbleMCMC(model = deg.comp, nchains = 2,
+                                        #                      summary = TRUE, monitors = TRUE
+
+    samples <- runMCMC(deg.comp, niter = 10000, nburnin = 1000, nchains = 2,summary = TRUE)
+
+                                        # Get the full summary table
+    summary_df <- as.data.frame(samples$summary$all.chains)
+
+
+```
+
+
+
+
+# Attempts at PMCMC for the Full Model
+
+
+## Simulation Code and Full Race Model with Fuel Loss
+
+We'll create a fuel.kg vector which starts at 110 (this is the max amount of fuel allowed by regulation) and decreases linearly to 0 at the end of the race. We are going to use a similar model to the above but add a covariate to the observation equation for fuel. In order to estimate gamma correctly, it will be critical to set a proper prior for the initial latent $\alpha_1 = \alpha.reset[compound_{t=1}]$. Ultimately, it needs to be roughly 1-1.5 seconds less than the initial observation $y_1$, but in the stan code we'll set the prior to be centered on the true value of 95.
+
+\begin{align}
+	y_t &= \alpha_t + \gamma*fuel.kg_t +\epsilon_t \\
+	\alpha_{t+1} &= 
+	\begin{cases}
+		\alpha_t + \nu_t + \omega_t & pit_t = 0 \\ 
+		\alpha.reset[compound_t] & pit = 1
+	\end{cases} \\	
+	\nu_{t+1} &= 
+	\begin{cases}
+		\nu_t + \beta[compound_t] & pit_t = 0 \\
+		\nu.reset & pit = 1
+	\end{cases}	
+\end{align}
+
+where \( \epsilon_t \sim N(0,.2) \), \( \beta[Hard] = .002 \), $\beta[Medium] = .01$, $\beta[Soft] = .02$, $\nu_1 = \nu.reset = 0$, $\omega_t \sim N(0,.15)$, and $\alpha_1 = \alpha.reset[compound_{t=1}]$.  We'll let $\alpha.reset$ be 95, 94.5, and 94 for hard, medium, and soft tires resepectively. In this simulation, we will start on hard tires, pit on lap 30 for soft tires, then pit on lap 40 for medium tires. 
+
+
+
+
+```{r}
+
+# Number of states/laps
+N <- 60
+
+# Tire Compound index 1 - Hard, 2 - Medium, 3 - Soft
+compound <- c(rep(1,times = 30), rep(3, times = 10),rep(2, times = 20))
+
+# Fuel Mass in kg
+fuel.kg <- seq(from = 110, to = 0, length.out = N)
+
+# Gamma 
+gamma <- .01
+
+
+# Pit Index indicates with a 1 if a new set of tires is put on the next lap
+pit <- rep(0, N)
+pit[30] <- 1
+pit[40] <- 1
+
+# Beta is now a vector with the index representing each compound
+beta <- rep(0,3)
+beta[1] <- .002
+beta[2] <- .01
+beta[3] <- .02
+
+# Reset vector stores the true pace of a new tire for each compound
+reset.alpha <- rep(0,3)
+reset.alpha[1] <- 95
+reset.alpha[2] <- 94.5
+reset.alpha[3] <- 94
+
+# Reset value for nu
+reset.nu <- 0
+    
+# Initialize nu vector
+nu <- rep(NA, N)
+nu[1] <- .01
+
+# Initialize alpha vector
+alpha <- rep(NA, N)
+alpha[1] <- reset.alpha[1]
+
+# Initialize process errors
+omega <- rnorm(n = N, mean = 0, sd = .1)
+
+# Store true latent states
+for(i in 2:(length(alpha))) {
+    if(pit[i-1] == 1) {
+        alpha[i] <- reset.alpha[compound[i]] + omega[i]
+        nu[i] <- reset.nu
+    } else {
+    alpha[i] <- alpha[i-1] + nu[i-1] + omega[i]
+    nu[i] <- nu[i-1] + beta[compound[i-1]]
+    }
+}    
+
+# Vector of observation errors
+epsilon <- rnorm(n = N, mean = 0, sd = .2)
+
+# Simulated observations
+y <- alpha +  epsilon #+ fuel.kg*gamma 
+
+```
+
+
+
+## Attempt to Wrtie the Full Model in Nimble
+
+
+```{r}
+
+
+library(nimble)
+library(nimbleSMC)
+
+code <- nimbleCode({
+    
+    # priors
+    sdo ~ dnorm(sdo0, sd = .1)
+    sdp ~ dnorm(sdp0, sd = .1)
+    b[1] ~ dnorm(.002, sd = .1)
+    b[2] ~ dnorm(.01, sd = .1)
+    b[3] ~ dnorm(.02, sd = .1)
+    v_reset ~ dnorm(0,sd = .1)
+    z_reset[1] ~ dnorm(95,sd = .1)
+    z_reset[2] ~ dnorm(94.5,sd = .1)
+    z_reset[3] ~ dnorm(94,sd = .1)
+    
+    # Model
+    v[1] <- v_reset
+
+    for(t in 2:TT){
+        
+        v[t] <- (1 - pit[t]) * (v[t-1] + b[compound[t]]) + pit[t] * (v_reset)
+
+    }   
+    
+    z[1] ~ dnorm(z0,.1)
+
+    for(t in 2:TT){
+        
+        z[t] ~ dnorm((1 - pit[t-1]) * (z[t-1] + v[t-1]) + pit[t-1] * z_reset[compound[t]], sd = sdp)
+    }
+    
+    for(t in 1:TT){
+        y[t] ~ dnorm(z[t],sd = sdo)
+    }    
+})    
+
+constants <- list(TT = 60,
+                  sdo0 = .3,
+                  sdp0 = .1,
+                  v0 = 0,
+                  z0 = 96,
+                  pit = pit,
+                  compound = compound)
+
+data <- list(y = y)
+
+inits <- list(sdo = .3,
+              sdp = .1,
+              b = rep(0,3),
+              v = rep(0,N),
+              z = rep(96,N))
+
+deg.model <- nimbleModel(code = code,constants = constants, data = data,inits = inits)
+
+compileNimble(deg.model)
+
+deg.conf <- configureMCMC(deg.model, nodes = NULL,print = TRUE)
+
+deg.conf$addSampler(target = c('sdo','sdp','b',"v_reset","z_reset"),
+                    type = "RW_PF_block",
+                    control = list(latents = 'z',
+                                   pfType = "bootstrap",
+                                   pfNparticles = 2000))
+
+deg.MCMC <- buildMCMC(deg.conf)
+
+deg.comp <- compileNimble(deg.MCMC)
+
+#deg.out <- nimbleMCMC(model = deg.comp, nchains = 2,
+#                      summary = TRUE, monitors = TRUE
+
+samples <- runMCMC(deg.comp, niter = 10000, nburnin = 1000, nchains = 2,summary = TRUE)
+
+# Get the full summary table
+summary_df <- as.data.frame(samples$summary$all.chains)
+
+
+
+
+```
+
+
+

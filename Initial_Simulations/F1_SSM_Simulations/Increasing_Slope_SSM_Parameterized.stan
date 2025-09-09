@@ -38,7 +38,7 @@ transformed parameters {
 model {
   // Priors
   sdo ~ normal(sdo0, 0.1);       // Loosened prior
-  sdp ~ normal(0.1, 0.05);       
+  sdp ~ normal(0.1, 0.1);       
   v1  ~ normal(v0, 0.1);
   b   ~ normal(0.01, 0.05);
   z_std ~ normal(0, 1);          // Standardized innovations

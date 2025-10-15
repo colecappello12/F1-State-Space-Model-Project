@@ -195,12 +195,16 @@ z_stan <- extract(stan_test, pars = c("z"))[[1]]
 z_CIl <- apply(z_stan, 2, quantile, probs=0.025)
 z_CIu <- apply(z_stan, 2, quantile, probs=0.975)
 
+posterior <- extract(stan_test)
+yhat <- colMeans(posterior$y_rep)
+
 df1 <- tibble(time = time,
               alpha = alpha,
               alphahat = states,
               observations = y,
               z_CIl = z_CIl,
-              z_CIu = z_CIu)
+              z_CIu = z_CIu,
+              yhat = yhat)
 
 
 df_long <- df1 %>%
@@ -235,7 +239,7 @@ where $\hat{y}_{t|1:T})$ is the state estimate for the model at time t.
 ```{r}
 
 Tstat <- function(y) {
-    return(sum((y - df1$alphahat)^2))
+    return(sum((y - df1$yhat)^2))
 }    
 
 posterior <- extract(stan_test)

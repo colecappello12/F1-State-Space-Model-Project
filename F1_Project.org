@@ -1,31 +1,28 @@
 * Next Steps
-** TODO Add pit stop time increase to the model.
-  
-** DONE Implement Cross Validation for Model Selection
-CLOSED: [2025-09-07 Sun 19:57] DEADLINE: <2025-09-07 Sun>
-- [X] Cross Validation Simulation Study for single stint
-  - Simulate under models of different complexity
-  - Compare cross validation results of the different models
+** TODO Check out Bahrain grand prix and see if we can see better indications of deg
 
+** TODO Could Also Look at Free Practice Data
+
+** TODO Looking between teams in a race
+
+** TODO Implement CRPS for comparison to other Bayesian models
+
+** TODO Keep in mind the idea of some kind of tire degredation measurements that could be displayed in an F1 broadcast
+** DONE Fit full model (all stints) [3/4]
+CLOSED: [2025-09-30 Tue 09:45] DEADLINE: <2025-09-28 Sun>
+Look into CRPS for Bayesian test stat for CV
+- [X] Cross validation scheme
+- [ ] Simulate from some different models to do CV
+- [X] Fit on a nice race and talk about parameter estimates
+  - Did leclerc
+- [X] Need to have a skeleton (base) model to say hey my model does better
+  - Will try fitting ARIMA and then doing CV
+    
+** TODO Latex Template for JQAS
+
+** TODO Add pit stop time increase to the model. 
+  
 ** TODO Posterior Predictive Checks for PMCMC 
-DEADLINE: <2025-09-13 Sat>
-
-** TODO Still fit on synthetic data
-- mimic real data
-- stress priors
-  
-** TODO Develop a framework for comparing deg rates across drivers/teams 
-
-** TODO Send Andy what I have so far for the writing project
-  
-** TODO Email Erin Schliep
-- Ask a specific question about research
-- Mention you are thinking about applying and if there's any pros and cons of program
-
-** TODO Email Mike about fire research grant
-- if there are any ideas that would be better
-
-** TODO 12 - 1:30 Thursdays Reading Group
 
 * Stan Notes
 - options(mc.cores = parallel::detectCores()) will let you run the chains in parellel
@@ -98,6 +95,8 @@ To compute the [[https://stats.stackexchange.com/questions/476838/one-step-ahead
 - [X] Over a single stint
 - [X] Multiple Stints/Full Race
 - [ ] Multiple drivers
+** TODO Develop a framework for comparing deg rates across drivers/teams 
+
 * Misc Questions
 ** Mathjobs.org
 universityof florida stat jobs
@@ -172,6 +171,27 @@ CLOSED: [2025-08-19 Tue 13:31]
   - Added code so that stan only looks at used tire types
 - [X] For some of the more weird deg trajectories, we were getting negative estimates for b.  We can set a lower bound on this or play around with different priors.
   - Set a lower bound
+** DONE Ask Ian and/or Andy about Sensitivity Analysis for Priors
+CLOSED: [2025-09-16 Tue 13:40] DEADLINE: <2025-09-16 Tue>
+
+** DONE Implement Cross Validation for Model Selection
+CLOSED: [2025-09-07 Sun 19:57] DEADLINE: <2025-09-07 Sun>
+- [X] Cross Validation Simulation Study for single stint
+  - Simulate under models of different complexity
+  - Compare cross validation results of the different models
+
+** DONE Send Andy what I have so far for the writing project
+CLOSED: [2025-09-09 Tue 08:55]
+  
+** DONE NSF Grant
+CLOSED: [2025-09-19 Fri 20:55] DEADLINE: <2025-09-19 Fri>
+
+** DONE Could start writing out model and thinking about interpretation of coefficients
+CLOSED: [2025-10-14 Tue 12:14]
+
+** DONE Compare other state space models to ours on real data
+CLOSED: [2025-10-14 Tue 12:14]
+
 * Project Timeline  
 ** Meetings
 *** Meet w/ Andy
@@ -210,11 +230,11 @@ CLOSED: [2025-08-19 Tue 13:31]
 CLOSED: [2025-08-24 Sun 13:18] DEADLINE: <2025-08-28 Thu>
 *** DONE Data Preprocessing Rough Draft
 CLOSED: [2025-09-06 Sat 14:48] DEADLINE: <2025-09-07 Sun>
-*** TODO Chapter 3 Model Specs Rough Draft
-DEADLINE: <2025-09-25 Thu>
+*** DONE Chapter 3 Model Specs Rough Draft
+CLOSED: [2025-10-15 Wed 10:53] DEADLINE: <2025-10-12 Sun>
 *** TODO Chapter 4 Results Rough Draft
-DEADLINE: <2025-10-09 Thu>
+DEADLINE: <2025-10-25 Sat>
 *** TODO Chapter 5 Discussion/Conclusion Rough Draft
-DEADLINE: <2025-10-16 Thu>
+DEADLINE: <2025-10-31 Fri>
 *** TODO Preprint Finished
 DEADLINE: <2025-11-24 Mon>

@@ -39,10 +39,11 @@ options(mc.cores = parallel::detectCores())
 
 ```{r}
 
-Austria_laps <- read_csv("Hungary_laps.csv")
+Austria_laps <- read_csv("Austria_laps.csv")
 
 Austria_laps <- Austria_laps %>%
-    mutate(Stint = as.factor(Stint))
+    mutate(Stint = as.factor(Stint),
+           Compound = as.factor(Compound))
 
 filter(Austria_laps, Driver == "LEC", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
     ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
@@ -77,7 +78,7 @@ filter(Austria_laps, Driver == "RUS", is.na(PitOutTime) & is.na(PitInTime),LapTi
          y = "Lap Time (Seconds)")
 
 filter(Austria_laps, Driver == "HAM", is.na(PitOutTime) & is.na(PitInTime),LapTime < 100) %>%
-    ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Compound)) +
+    ggplot(mapping = aes(x = LapNumber, y = LapTime, colour = Stint)) +
     geom_point() +
     geom_smooth() +
     labs(title = "Tire Degration -- Lewis Hamilton (Ferrari)",
@@ -370,7 +371,7 @@ leclerc_used <- length(leclerc_map)
 
 ```{r}
 
-leclerc_data <- list(TT = length(leclerc_laps), y = leclerc_laps, C = 3, Compound = leclerc_compound, C_used = leclerc_used, compound_map = leclerc_map, Pit = leclerc_pit, z_reset0 = c(81,80.5,80), v_reset0 = 0, sdo0 = .3, fuel_mass = fuel.kg)
+leclerc_data <- list(TT = length(leclerc_laps), y = leclerc_laps, C = 3, Compound = leclerc_compound, C_used = leclerc_used, compound_map = leclerc_map, Pit = leclerc_pit, z_reset0 = c(80.5,79,79), v_reset0 = 0, sdo0 = .3, fuel_mass = fuel.kg)
 
 stan_test <- stan(file = "full_race_1driver_and_fuel_real.stan",
                   data = leclerc_data,

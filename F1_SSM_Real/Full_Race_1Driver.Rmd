@@ -429,7 +429,7 @@ One of the things I like about this as well is that the laptime observations can
 
 ## Posterior Predictive Checks
 
-eFor the previous model, we will do a posterior predictive check with the test statistic:
+For the previous model, we will do a posterior predictive check with the test statistic:
 
 \[
 T(\mathbf{y},\theta) = \sum_{t=1}^T (y_t - \hat{y}_{t|1:T})^2

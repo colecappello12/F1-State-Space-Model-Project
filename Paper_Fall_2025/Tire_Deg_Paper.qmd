@@ -250,7 +250,8 @@ rownames(model_selection_results) <- c("RMSPE Stint 1",
                                        "Total RMSPE")
 
 # Display table
-kable(model_selection_results)
+kable(model_selection_results,
+      caption = "Cross Validation Results")
 
 ```
 
@@ -274,11 +275,205 @@ where $\hat{y}_{t|1:T}$ is the estimated lap time at time t, given all available
 ![Extension 2 Model PPC](PPC_Ext2.png)
 
 
+# Results
+
+```{r, include=FALSE}
+#| cache: true
+
+# Code to get the posterior samples for each model
+
+hamilton_df <- austria_laps %>%
+  filter(Driver == "HAM", is.na(PitOutTime) & is.na(PitInTime), LapTime < 100) %>%
+  mutate(Compound_Code = as.integer(factor(Compound,levels = c("HARD","MEDIUM","SOFT"))))
+
+hamilton_laps <- hamilton_df$LapTime
+
+hamilton_compound <- hamilton_df$Compound_Code
+
+hamilton_pit <- rep(0,length(hamilton_compound))
+
+for(i in 2:length(hamilton_df$Stint)) {
+  if(hamilton_df$Stint[i] != hamilton_df$Stint[i-1]) {
+    hamilton_pit[i-1] <- 1
+  }    
+}                  
+
+fuel.kg <- seq(110,1,length.out = length(hamilton_laps))
+
+hamilton_map <- sort(unique(hamilton_compound))
+hamilton_used <- length(hamilton_map)
+
+
+#####################################################################
+
+# Data for stan code
+hamilton_data <- list(TT = length(hamilton_laps), y = hamilton_laps, C = 3, Compound = hamilton_compound, C_used = hamilton_used, compound_map = hamilton_map, Pit = hamilton_pit, z_reset0 = 69, v_reset0 = 0, sdo0 = .3, fuel_mass = fuel.kg)
+
+# Fit Model
+base_model <- stan(file = "full_race_1driver_and_fuel_base.stan",
+                   data = hamilton_data,
+                   chains = 3, iter = 30000,
+                   control = list(adapt_delta = .99, max_treedepth = 12))
+
+posterior_base <- extract(base_model)
+
+#####################################################################
+
+hamilton_data <- list(TT = length(hamilton_laps), y = hamilton_laps, C = 3, Compound = hamilton_compound, C_used = hamilton_used, compound_map = hamilton_map, Pit = hamilton_pit, z_reset0 = c(69.5,69,68.5), v_reset0 = 0, sdo0 = .3, fuel_mass = fuel.kg)
+
+ext1_model <- stan(file = "full_race_1driver_and_fuel_Extension1.stan",
+                   data = hamilton_data,
+                   chains = 3, iter = 30000,
+                   control = list(adapt_delta = .99, max_treedepth = 12))
+
+posterior_ext1 <- extract(ext1_model)
+
+#####################################################################
+
+ext2_model <- stan(file = "full_race_1driver_and_fuel_Extension2.stan",
+                   data = hamilton_data,
+                   chains = 3, iter = 30000,
+                   control = list(adapt_delta = .99, max_treedepth = 12))
+
+posterior_ext2 <- extract(ext2_model)
+
+```
+
+In this section we will discuss the results of fitting the various models.  In particular, we will discuss estimates of degradation rates across tire compound and prediction of lap times. 
+
+## Fitting the First and Second Extensions of the Base Model
+
+In the previous section we saw that the base model performed best with the first extension close behind.  This is surprising given that the entire purpose of having different tire compounds in F1 is so that certain compounds will degrade more quickly, leading to more interesting race strategies. 
+
+```{r,echo=FALSE}
+
+nu_vec <- colMeans(posterior_ext1$v_c)[1:2]
+
+quantiles <- t(apply(posterior_ext1$v_c,2,quantile,probs = c(.025,.975))[,1:2])
+
+df <- cbind(nu_vec,quantiles)
+kable(as.data.frame(df,row.names = c("Hard", "Medium")), 
+      col.names = c("$\\nu$","2.5%","97.5%"), row.names = TRUE,
+      escape = FALSE,
+      caption = "Estimated Degredation Rates with 95% Credible Intervals")
+
+```
+
+Table 2 shows the estimated values of $\nu$ for the first extension to the base model. These estimates are for the hard and medium tires used by Lewis Hamilton in the Austrian Grand Prix, along with bounds for a 95% credible interval. While we do estimate a slightly higher degradation rate for the medium compound tires, the credible intervals have a large degree of overlap, indicating that the data provides little evidence that there is a difference in degradation rate between the compounds.  
+
+
+
+```{r,echo=FALSE}
+
+beta_vec <- colMeans(posterior_ext2$beta_c)[1:2]
+
+quantiles <- t(apply(posterior_ext2$beta_c,2,quantile,probs = c(.025,.975))[,1:2])
+
+df <- cbind(beta_vec,quantiles)
+kable(as.data.frame(df,row.names = c("Hard", "Medium")), 
+      col.names = c("$\\beta$","2.5%","97.5%"), row.names = TRUE,
+      escape = FALSE,
+      caption = "Estimated $\\beta$ with 95% Credible Intervals")
+
+laps <- 1:(length(hamilton_laps)-1)
+nu_ext2 <- colMeans(posterior_ext2$v)
+
+nu_df <- tibble(laps = laps,
+                nu = nu_ext2)
+
+nu_df %>%
+  ggplot(mapping = aes(x = laps, y = nu)) + 
+  geom_point() + 
+  labs(x = "Lap Number",
+       y = expression("Estimated "*nu),
+       title = "Figure 2")
+
+```
+
+From Table 3 we see that the estimated $\beta$ for the hard tire compound is slightly greater than that for the medium tire compound. Once again however, the credible intervals show significant overlap, indicating little evidence based on the data that the two parameters are different. Interestingly, the degradation rate $\nu$ starts negative, then increases to roughly .15 before a pit stop.  This makes sense given that the tires require a warm up period before reaching their optimum operating window. (citation). Thus, while the base model performed best in terms of predictive accuracy, we can still glean interesting insights from the more complicated models.
+
+Of course, in both model extensions we see that our degradation estimates do not meaningfully change across the tire compounds used. This is likely why the base model performs better in terms of prediction than our extensions.  Another important consideration is that drivers strive to achieve target lap times set by their engineers during a race. Thus, they are not driving at the absolute limit and are actively trying to manage their degradation rates.  This explains why we tend to see a linear decay.
 
 
 
 
+## Prediction of Lap Times with Uncertainty
 
+- Plan to write code for predicting 1-5 laps ahead with 95% credible intervals
+- Plan to Make figures of predictions with error bounds
+- Make some comments about how predictions could be used during the race
+- Could be interesting to look at full model and say that past a deg rate of .15 seconds we start to see teams pit
+
+One benefit of these models is the ability to quickly assimilate new data points and get predictions for the next lap time with uncertainty intervals. For example, if we run the base model on laps 1-40 to predict the next lap time we get:
+
+```{r, include=FALSE}
+#| cache: true
+
+hamilton_laps <- hamilton_df$LapTime[1:40]
+
+hamilton_compound <- hamilton_df$Compound_Code[1:40]
+
+hamilton_pit <- rep(0,length(hamilton_compound))
+
+fuel.kg <- seq(110,1,length.out = length(hamilton_laps))
+
+hamilton_data <- list(TT = length(hamilton_laps), y = hamilton_laps, C = 3, Compound = hamilton_compound, C_used = hamilton_used, compound_map = hamilton_map, Pit = hamilton_pit, z_reset0 = 69, v_reset0 = 0, sdo0 = .3, fuel_mass = fuel.kg)
+
+# Fit Model
+base_model <- stan(file = "full_race_1driver_and_fuel_base.stan",
+                   data = hamilton_data,
+                   chains = 3, iter = 30000,
+                   control = list(adapt_delta = .99, max_treedepth = 12))
+
+posterior_pred_base <- extract(base_model)
+
+#####################################################################
+
+hamilton_data <- list(TT = length(hamilton_laps), y = hamilton_laps, C = 3, Compound = hamilton_compound, C_used = hamilton_used, compound_map = hamilton_map, Pit = hamilton_pit, z_reset0 = c(69.5,69,68.5), v_reset0 = 0, sdo0 = .3, fuel_mass = fuel.kg)
+
+ext1_model <- stan(file = "full_race_1driver_and_fuel_Extension1.stan",
+                   data = hamilton_data,
+                   chains = 3, iter = 30000,
+                   control = list(adapt_delta = .99, max_treedepth = 12))
+
+posterior_pred_ext1 <- extract(ext1_model)
+
+#####################################################################
+
+ext2_model <- stan(file = "full_race_1driver_and_fuel_Extension2.stan",
+                   data = hamilton_data,
+                   chains = 3, iter = 30000,
+                   control = list(adapt_delta = .99, max_treedepth = 12))
+
+posterior_pred_ext2 <- extract(ext2_model)
+
+```
+
+```{r,echo=FALSE,warning=FALSE}
+
+pred_df <- tibble(lap = 41,
+                  base_pred = mean(posterior_pred_base$y_pred),
+                  ext1_pred = mean(posterior_pred_ext1$y_pred),
+                  ext2_pred = mean(posterior_pred_ext2$y_pred))
+
+bounds_df <- tibble(base = quantile(posterior_pred_base$y_pred, probs = c(.05,.95)),
+                    ext1 = quantile(posterior_pred_ext1$y_pred, probs = c(.025,.975)),
+                    ext2 = quantile(posterior_pred_ext2$y_pred, probs = c(.025,.975)))
+
+hamilton_pred_df <- hamilton_df[1:40,]
+hamilton_pred_df$Lap <- 1:nrow(hamilton_pred_df)
+
+ggplot(hamilton_pred_df, mapping = aes(x = Lap, y = LapTime, col = "Observed Lap Times")) + 
+  geom_point() +
+  geom_segment(aes(x = pred_df$lap, xend = pred_df$lap, y = bounds_df$base[1], yend = bounds_df$base[2]), color = "90% CI", linewidth = .5 ,alpha = .4) +
+  geom_point(data = pred_df, mapping = aes(x = lap, y = base_pred, col = "Prediction")) + 
+  scale_color_manual(values = c("Observed Lap Times" = "Black", "Prediction" = "Red", "90% CI" = "Red"),
+                     name = "Legend") + 
+  labs(y = "Lap Time")
+
+```
+
+It takes between 15 and 30 seconds to run the base and extension 1 models, giving plenty of time to use the results for decision making in the rest of the lap. In addition, if the fully extended model with increasing degradation rate $\nu$ is used, a team could use a certain threshold of $\nu$ past which they consider a pit stop. In other words, when the degradation rate gets too high, teams can begin seeking an optimal window in which the driver can be pitted.
 
 
 

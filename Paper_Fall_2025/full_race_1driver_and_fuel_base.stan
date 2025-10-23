@@ -63,6 +63,6 @@ generated quantities {
   real z_pred;
   real y_pred;
   z_pred = normal_rng(z[TT] + v,sdp);
-  y_pred = normal_rng(z_pred + gamma*fuel_mass[TT],sdo);	
+  y_pred = normal_rng(z_pred + gamma*fuel_mass[TT],sdo);
 }
 
